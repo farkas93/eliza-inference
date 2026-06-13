@@ -16,29 +16,45 @@ fi
 
 mkdir -p "$MODEL_HOME" "$HF_HOME"
 
+hf_download() {
+  if uv run --project "$ROOT_DIR" hf --help >/dev/null 2>&1; then
+    uv run --project "$ROOT_DIR" hf download "$@"
+    return 0
+  fi
+
+  if uv run --project "$ROOT_DIR" huggingface-cli --help >/dev/null 2>&1; then
+    uv run --project "$ROOT_DIR" huggingface-cli download "$@"
+    return 0
+  fi
+
+  echo "Neither 'hf' nor 'huggingface-cli' is available through uv." >&2
+  echo "Run ./scripts/install, then retry." >&2
+  return 1
+}
+
 case "$SERVICE" in
   qwen-coder)
     echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
-    uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+    hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
     ;;
   voice-llm)
     if [[ "${BACKEND:-llamacpp}" == "llamacpp" ]]; then
       mkdir -p "$MODEL_DIR"
       echo "Downloading voice GGUF files from $MODEL_REPO into $MODEL_DIR"
-      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_REPO" \
+      hf_download "$MODEL_REPO" \
         --include "$MODEL_FILE" \
         --include "${MMPROJ_FILE:-mmproj-BF16.gguf}" \
         --local-dir "$MODEL_DIR"
     else
       echo "Downloading/syncing vLLM model snapshot: $MODEL_ID"
-      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+      hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
     fi
     ;;
   stt)
     if [[ "${BACKEND:-faster-whisper}" == "faster-whisper" ]]; then
       mkdir -p "$MODEL_DIR"
       echo "Downloading/syncing faster-whisper model: $MODEL_ID"
-      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$MODEL_DIR"
+      hf_download "$MODEL_ID" --local-dir "$MODEL_DIR"
     else
       echo "Automatic download for STT backend '${BACKEND:-}' is not implemented. Configure MODEL_DIR/MODEL_FILE manually." >&2
       exit 1
@@ -48,7 +64,7 @@ case "$SERVICE" in
     if [[ "${BACKEND:-piper}" == "piper" ]]; then
       mkdir -p "$MODEL_DIR"
       echo "Downloading Piper voice files from $MODEL_REPO into $MODEL_DIR"
-      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_REPO" \
+      hf_download "$MODEL_REPO" \
         --include "${HF_INCLUDE_MODEL:-$MODEL_FILE}" \
         --include "${HF_INCLUDE_CONFIG:-$MODEL_CONFIG_FILE}" \
         --local-dir "$MODEL_DIR"
