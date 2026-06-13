@@ -45,3 +45,14 @@ Useful options:
 ```
 
 If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAMA_SERVER_BIN` line to `.env`.
+
+`install-vllm` installs vLLM with `uv`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU.
+
+Useful options:
+
+```bash
+./scripts/install-vllm --no-install
+./scripts/install-vllm --pre
+./scripts/install-vllm --package vllm
+./scripts/install-vllm --torch-backend auto
+```

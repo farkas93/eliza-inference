@@ -60,6 +60,25 @@ Run:
 
 On DGX Spark, vLLM wheels and torch builds can be architecture-sensitive. Prefer a known-good wheel/container for your current OS image if the direct install fails.
 
+If install succeeds but verification fails with `torch CUDA is not available`, the installed Torch stack is not GPU-ready for this machine. Check:
+
+```bash
+nvidia-smi
+uv run --project . python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+```
+
+To rerun verification without reinstalling packages:
+
+```bash
+./scripts/install-vllm --no-install
+```
+
+If a pre-release vLLM is needed for GB10 support:
+
+```bash
+./scripts/install-vllm --pre
+```
+
 ## Gemma 4 Audio Issues
 
 Use a recent llama.cpp build. Prefer `mmproj-BF16.gguf` for Gemma 4 audio. Start with text-only smoke tests before direct audio tests.
