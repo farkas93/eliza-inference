@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="start"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+parse_service_profile "$@"
+
+require_command tmux
+mkdir -p "$LOG_DIR"
+
+if tmux_has_session; then
+  echo "Service already running in tmux session: $SESSION_NAME"
+  exit 0
+fi
+
+if [[ ! -x "$SERVICE_DIR/start.sh" ]]; then
+  echo "Service start script is missing or not executable: $SERVICE_DIR/start.sh" >&2
+  exit 1
+fi
+
+tmux new-session -d -s "$SESSION_NAME" "bash -lc 'cd \"$ROOT_DIR\" && set -a; [[ -f \"$ROOT_DIR/.env\" ]] && source \"$ROOT_DIR/.env\"; source \"$PROFILE_PATH\"; set +a; exec \"$SERVICE_DIR/start.sh\" 2>&1 | tee -a \"$LOG_FILE\"'"
+
+echo "Started $SERVICE with profile $PROFILE in tmux session $SESSION_NAME"
+echo "Logs: $LOG_FILE"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "nvidia-smi is not available" >&2
+  exit 1
+fi
+
+nvidia-smi --query-gpu=timestamp,name,memory.used,memory.total,utilization.gpu --format=csv

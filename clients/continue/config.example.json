@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "title": "Qwen 3.6 200K Local",
+      "provider": "openai",
+      "model": "Qwen/Qwen3.6-27B-FP8",
+      "apiBase": "http://localhost:8001/v1",
+      "contextLength": 200000,
+      "completionOptions": {
+        "temperature": 0.6,
+        "topP": 0.95,
+        "maxTokens": 8192
+      }
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Local Fast Autocomplete",
+    "provider": "openai",
+    "model": "Qwen/Qwen3.6-27B-FP8",
+    "apiBase": "http://localhost:8001/v1",
+    "contextLength": 8192,
+    "completionOptions": {
+      "temperature": 0.2,
+      "maxTokens": 512
+    }
+  }
+}

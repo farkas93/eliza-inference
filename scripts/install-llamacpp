@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+if command -v "$LLAMA_SERVER_BIN" >/dev/null 2>&1; then
+  echo "llama-server already available: $(command -v "$LLAMA_SERVER_BIN")"
+  exit 0
+fi
+
+echo "llama-server was not found on PATH."
+echo "Recommended DGX Spark build path:"
+echo "  git clone https://github.com/ggml-org/llama.cpp ~/src/llama.cpp"
+echo "  cmake ~/src/llama.cpp -B ~/src/llama.cpp/build -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON -DLLAMA_CURL=ON"
+echo "  cmake --build ~/src/llama.cpp/build --config Release -j --target llama-server llama-cli llama-mtmd-cli"
+echo "  export LLAMA_SERVER_BIN=~/src/llama.cpp/build/bin/llama-server"
+exit 1

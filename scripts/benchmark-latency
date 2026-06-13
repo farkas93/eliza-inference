@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="benchmark-latency"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+parse_service_profile "$@"
+
+base_url="$(service_base_url)"
+model="$(service_model_name)"
+
+uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/openai/voice_test.py" \
+  --base-url "$base_url" \
+  --model "$model"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="logs"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+parse_service_profile "$@"
+
+if [[ -f "$LOG_FILE" ]]; then
+  less +G "$LOG_FILE"
+else
+  echo "No log file yet: $LOG_FILE"
+fi

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="download-models"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+parse_service_profile "$@"
+source_profile
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required." >&2
+  exit 1
+fi
+
+mkdir -p "$MODEL_HOME" "$HF_HOME"
+
+case "$SERVICE" in
+  qwen-coder)
+    echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
+    uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+    ;;
+  voice-llm)
+    if [[ "${BACKEND:-llamacpp}" == "llamacpp" ]]; then
+      mkdir -p "$MODEL_DIR"
+      echo "Downloading voice GGUF files from $MODEL_REPO into $MODEL_DIR"
+      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_REPO" \
+        --include "$MODEL_FILE" \
+        --include "${MMPROJ_FILE:-mmproj-BF16.gguf}" \
+        --local-dir "$MODEL_DIR"
+    else
+      echo "Downloading/syncing vLLM model snapshot: $MODEL_ID"
+      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+    fi
+    ;;
+  stt)
+    if [[ "${BACKEND:-faster-whisper}" == "faster-whisper" ]]; then
+      mkdir -p "$MODEL_DIR"
+      echo "Downloading/syncing faster-whisper model: $MODEL_ID"
+      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_ID" --local-dir "$MODEL_DIR"
+    else
+      echo "Automatic download for STT backend '${BACKEND:-}' is not implemented. Configure MODEL_DIR/MODEL_FILE manually." >&2
+      exit 1
+    fi
+    ;;
+  tts)
+    if [[ "${BACKEND:-piper}" == "piper" ]]; then
+      mkdir -p "$MODEL_DIR"
+      echo "Downloading Piper voice files from $MODEL_REPO into $MODEL_DIR"
+      uv run --project "$ROOT_DIR" huggingface-cli download "$MODEL_REPO" \
+        --include "${HF_INCLUDE_MODEL:-$MODEL_FILE}" \
+        --include "${HF_INCLUDE_CONFIG:-$MODEL_CONFIG_FILE}" \
+        --local-dir "$MODEL_DIR"
+    else
+      echo "Automatic download for TTS backend '${BACKEND:-}' is not implemented." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Unsupported service for downloads: $SERVICE" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+failures=0
+
+check() {
+  local label="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    printf "[ok]   %s\n" "$label"
+  else
+    printf "[warn] %s\n" "$label"
+    failures=$((failures + 1))
+  fi
+}
+
+printf "Eliza inference doctor\n"
+printf "Root: %s\n" "$ROOT_DIR"
+printf "Model home: %s\n" "$MODEL_HOME"
+printf "Log dir: %s\n\n" "$LOG_DIR"
+
+check "uv is available" command -v uv
+check "tmux is available" command -v tmux
+check "git-lfs is available" command -v git-lfs
+check "curl is available" command -v curl
+check "nvidia-smi is available" command -v nvidia-smi
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || true
+fi
+
+mkdir -p "$MODEL_HOME" "$HF_HOME" "$LLAMA_CACHE" "$LOG_DIR"
+
+python_bin="$(command -v python3 || command -v python || true)"
+if [[ -n "$python_bin" ]]; then
+  "$python_bin" --version
+elif command -v uv >/dev/null 2>&1; then
+  echo "[ok]   Python is available through uv"
+else
+  echo "[warn] Python is not available"
+  failures=$((failures + 1))
+fi
+
+if command -v ss >/dev/null 2>&1; then
+for port in "$QWEN_CODER_PORT" "$VOICE_LLM_PORT" "$STT_PORT" "$TTS_PORT"; do
+    if ss -ltn "sport = :$port" | grep -q ":$port"; then
+      echo "[warn] port $port is already listening"
+    else
+      echo "[ok]   port $port is free"
+    fi
+  done
+fi
+
+available_kb=$(df -Pk "$MODEL_HOME" | awk 'NR == 2 {print $4}')
+available_gb=$((available_kb / 1024 / 1024))
+echo "[info] free disk at $MODEL_HOME: ${available_gb} GB"
+
+if [[ "$failures" -gt 0 ]]; then
+  echo "Doctor completed with $failures warning(s)."
+else
+  echo "Doctor completed without warnings."
+fi

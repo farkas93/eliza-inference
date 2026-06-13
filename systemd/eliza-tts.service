@@ -1,0 +1,14 @@
+[Unit]
+Description=Eliza TTS Endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+WorkingDirectory=%h/private/eliza-inference
+ExecStart=%h/private/eliza-inference/scripts/start tts --profile tts-piper-lessac
+ExecStop=%h/private/eliza-inference/scripts/stop tts --profile tts-piper-lessac
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

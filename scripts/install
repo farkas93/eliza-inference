@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is not installed. Install uv first: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
+fi
+
+mkdir -p "$MODEL_HOME" "$HF_HOME" "$LLAMA_CACHE" "$LOG_DIR"
+uv sync --project "$ROOT_DIR"
+
+echo "Base Python environment ready."
