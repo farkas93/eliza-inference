@@ -8,16 +8,17 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 parse_service_profile "$@"
 
-base_url="$(service_base_url)"
-model="$(service_model_name)"
-
 case "$SERVICE" in
   stt)
+    base_url="$(service_base_url)"
+    model="$(service_model_name)"
     uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/stt_test.py" \
       --base-url "$base_url" \
       --model "$model"
     ;;
   tts)
+    base_url="$(service_base_url)"
+    model="$(service_model_name)"
     source_profile
     uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/tts_test.py" \
       --base-url "$base_url" \
@@ -36,6 +37,8 @@ case "$SERVICE" in
       --tts-voice "${TTS_VOICE:-default}"
     ;;
   *)
+    base_url="$(service_base_url)"
+    model="$(service_model_name)"
     uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/openai/smoke_test.py" \
       --base-url "$base_url" \
       --model "$model"
