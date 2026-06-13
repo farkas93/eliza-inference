@@ -57,7 +57,7 @@ else
 fi
 
 if command -v ss >/dev/null 2>&1; then
-for port in "$QWEN_CODER_PORT" "$VOICE_LLM_PORT" "$STT_PORT" "$TTS_PORT"; do
+for port in "$QWEN_CODER_PORT" "$VOICE_LLM_PORT" "$STT_PORT" "$TTS_PORT" "$VOCODE_BRIDGE_PORT"; do
     if ss -ltn "sport = :$port" | grep -q ":$port"; then
       echo "[warn] port $port is already listening"
     else

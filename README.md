@@ -10,6 +10,7 @@ DGX Spark-first local inference stack for a long-context Qwen coding endpoint an
 | `voice-llm` | llama.cpp | `unsloth/gemma-4-E4B-it-GGUF` | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
+| `vocode-bridge` | FastAPI WS bridge | STT/TTS transport spike | `8021` |
 
 Services bind to `0.0.0.0` by default for LAN access. Do not expose them directly to the public internet.
 
@@ -61,6 +62,13 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 ./scripts/stop voice-llm
 ./scripts/benchmark-latency voice-llm
 ./scripts/benchmark-context qwen-coder --tokens 200000
+```
+
+Test the Vocode bridge transport spike:
+
+```bash
+./scripts/start vocode-bridge --profile vocode-bridge-local
+./scripts/smoke-test vocode-bridge --profile vocode-bridge-local
 ```
 
 ## Vocode Pipeline

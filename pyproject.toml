@@ -10,6 +10,7 @@ dependencies = [
   "openai>=1.82.0",
   "python-multipart>=0.0.20",
   "uvicorn[standard]>=0.34.0",
+  "websockets>=13.0",
 ]
 
 [tool.uv]

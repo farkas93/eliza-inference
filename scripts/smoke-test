@@ -36,6 +36,11 @@ case "$SERVICE" in
       --tts-model "${TTS_MODEL:?TTS_MODEL is required}" \
       --tts-voice "${TTS_VOICE:-default}"
     ;;
+  vocode-bridge)
+    source_profile
+    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/vocode_bridge_test.py" \
+      --url "ws://127.0.0.1:${PORT:-8021}/ws"
+    ;;
   *)
     base_url="$(service_base_url)"
     model="$(service_model_name)"

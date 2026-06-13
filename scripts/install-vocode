@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required. Run ./scripts/install first." >&2
+  exit 1
+fi
+
+uv sync --project "$ROOT_DIR"
+uv pip install --project "$ROOT_DIR" -U vocode
+
+uv run --project "$ROOT_DIR" python - <<'PY'
+import importlib.metadata as md
+try:
+    print(f"vocode={md.version('vocode')}")
+except md.PackageNotFoundError:
+    raise SystemExit("vocode did not install")
+PY
+
+cat <<'EOF'
+
+Vocode package installed.
+
+The current vocode-bridge service validates the browser audio transport and hosted STT/TTS endpoints first.
+Deeper Vocode StreamingConversation adapters can be added once this bridge contract is proven.
+EOF

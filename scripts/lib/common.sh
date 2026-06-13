@@ -18,11 +18,12 @@ load_env() {
   VOICE_LLM_PORT="${VOICE_LLM_PORT:-8002}"
   STT_PORT="${STT_PORT:-8011}"
   TTS_PORT="${TTS_PORT:-8012}"
+  VOCODE_BRIDGE_PORT="${VOCODE_BRIDGE_PORT:-8021}"
   VLLM_BIN="${VLLM_BIN:-vllm}"
   LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
   PIPER_BIN="${PIPER_BIN:-piper}"
 
-  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR DEFAULT_HOST QWEN_CODER_PORT VOICE_LLM_PORT STT_PORT TTS_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
+  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR DEFAULT_HOST QWEN_CODER_PORT VOICE_LLM_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
 }
 
 usage_service_profile() {
@@ -70,6 +71,7 @@ parse_service_profile() {
       stt) PROFILE="stt-faster-whisper-small-cpu" ;;
       tts) PROFILE="tts-piper-lessac" ;;
       voice-assistant) PROFILE="voice-assistant-local" ;;
+      vocode-bridge) PROFILE="vocode-bridge-local" ;;
       *)
         echo "No default profile for service: $SERVICE" >&2
         exit 2

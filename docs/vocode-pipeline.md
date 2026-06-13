@@ -38,6 +38,8 @@ POST /v1/audio/speech
 
 Start with utterance-level STT and response-level TTS. Add streaming and barge-in after the separate services are stable.
 
+For the Vocode experiment, see `docs/vocode-bridge.md`. The first bridge milestone validates WebSocket audio transport and hosted STT/TTS before committing to deeper Vocode internals.
+
 ## Full Pipeline Smoke Test
 
 Before wiring live microphone/speaker Vocode adapters, test the same service boundaries over HTTP:

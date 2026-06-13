@@ -1,0 +1,14 @@
+[Unit]
+Description=Eliza Vocode Bridge Endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+WorkingDirectory=%h/private/eliza-inference
+ExecStart=%h/private/eliza-inference/scripts/start vocode-bridge --profile vocode-bridge-local
+ExecStop=%h/private/eliza-inference/scripts/stop vocode-bridge --profile vocode-bridge-local
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
