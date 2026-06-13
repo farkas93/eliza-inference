@@ -32,4 +32,6 @@ The doctor checks common tools, NVIDIA visibility, default ports, model director
 ./scripts/install-llamacpp
 ```
 
+`scripts/install` bootstraps `uv` if it is missing and installs `git-lfs` through `apt` when `sudo` is available. If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
+
 `install-llamacpp` currently verifies that `llama-server` is available and prints the recommended CUDA build commands if it is not. This avoids hiding architecture-specific build failures behind an opaque installer.

@@ -6,10 +6,50 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
+install_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "uv is missing and curl is not available to install it." >&2
+    return 1
+  fi
+
+  echo "Installing uv with the official installer..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "uv installation finished, but uv is still not on PATH." >&2
+    echo "Open a new shell or add ~/.local/bin to PATH, then rerun ./scripts/install." >&2
+    return 1
+  fi
+}
+
+install_git_lfs() {
+  if command -v git-lfs >/dev/null 2>&1; then
+    git lfs install --skip-repo >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if command -v apt-get >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+    echo "Installing git-lfs with apt..."
+    sudo apt-get update
+    sudo apt-get install -y git-lfs
+    git lfs install --skip-repo >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  echo "git-lfs is missing. Install it manually if model repositories require LFS." >&2
+  return 0
+}
+
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is not installed. Install uv first: https://docs.astral.sh/uv/getting-started/installation/" >&2
-  exit 1
+  install_uv
 fi
+
+install_git_lfs
 
 mkdir -p "$MODEL_HOME" "$HF_HOME" "$LLAMA_CACHE" "$LOG_DIR"
 uv sync --project "$ROOT_DIR"
