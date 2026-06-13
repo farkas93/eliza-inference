@@ -34,4 +34,14 @@ The doctor checks common tools, NVIDIA visibility, default ports, model director
 
 `scripts/install` bootstraps `uv` if it is missing and installs `git-lfs` through `apt` when `sudo` is available. If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
 
-`install-llamacpp` currently verifies that `llama-server` is available and prints the recommended CUDA build commands if it is not. This avoids hiding architecture-specific build failures behind an opaque installer.
+`install-llamacpp` builds a recent CUDA-enabled llama.cpp checkout under `~/src/llama.cpp` when `llama-server` is not already available. It installs apt build prerequisites when `sudo` is available, configures CMake with `GGML_CUDA=ON` and `LLAMA_CURL=ON`, and builds `llama-server`, `llama-cli`, and `llama-mtmd-cli`.
+
+Useful options:
+
+```bash
+./scripts/install-llamacpp --clean
+./scripts/install-llamacpp --no-update
+./scripts/install-llamacpp --dir ~/src/llama.cpp
+```
+
+If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAMA_SERVER_BIN` line to `.env`.

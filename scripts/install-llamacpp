@@ -6,15 +6,224 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
-if command -v "$LLAMA_SERVER_BIN" >/dev/null 2>&1; then
-  echo "llama-server already available: $(command -v "$LLAMA_SERVER_BIN")"
+LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
+LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp}"
+BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
+CLEAN_BUILD="false"
+UPDATE_SOURCE="true"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --clean)
+      CLEAN_BUILD="true"
+      shift
+      ;;
+    --no-update)
+      UPDATE_SOURCE="false"
+      shift
+      ;;
+    --dir)
+      LLAMA_CPP_DIR="${2:-}"
+      BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/install-llamacpp [--clean] [--no-update] [--dir <path>]
+
+Builds llama.cpp with CUDA and curl support.
+
+Options:
+  --clean      Remove the build directory before configuring.
+  --no-update  Do not git pull an existing clean llama.cpp checkout.
+  --dir PATH   Source checkout path. Default: ~/src/llama.cpp
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+existing_llama_server() {
+  if [[ -n "${LLAMA_SERVER_BIN:-}" && -x "${LLAMA_SERVER_BIN:-}" ]]; then
+    echo "$LLAMA_SERVER_BIN"
+    return 0
+  fi
+
+  if command -v "${LLAMA_SERVER_BIN:-llama-server}" >/dev/null 2>&1; then
+    command -v "${LLAMA_SERVER_BIN:-llama-server}"
+    return 0
+  fi
+
+  if command -v llama-server >/dev/null 2>&1; then
+    command -v llama-server
+    return 0
+  fi
+
+  return 1
+}
+
+print_binary_version() {
+  local binary="$1"
+  "$binary" --version 2>/dev/null || "$binary" --help 2>/dev/null | sed -n '1p' || true
+}
+
+install_prereqs() {
+  local missing=()
+  local command_name
+
+  for command_name in git cmake curl; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      missing+=("$command_name")
+    fi
+  done
+
+  if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then
+    missing+=("build-essential")
+  fi
+
+  if ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; then
+    missing+=("build-essential")
+  fi
+
+  if ! command -v pkg-config >/dev/null 2>&1; then
+    missing+=("pkg-config")
+  fi
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    echo "[ok] build prerequisites are available"
+    return 0
+  fi
+
+  if command -v apt-get >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+    echo "Installing build prerequisites with apt: ${missing[*]} libcurl4-openssl-dev ninja-build"
+    sudo apt-get update
+    sudo apt-get install -y build-essential cmake git curl libcurl4-openssl-dev pkg-config ninja-build
+    return 0
+  fi
+
+  echo "Missing build prerequisites: ${missing[*]}" >&2
+  echo "Install them manually, then rerun ./scripts/install-llamacpp." >&2
+  exit 1
+}
+
+check_cuda_visibility() {
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    echo "[ok] nvidia-smi found"
+    nvidia-smi --query-gpu=name,driver_version --format=csv,noheader || true
+  else
+    echo "[warn] nvidia-smi not found; CUDA build may fail if CUDA is unavailable" >&2
+  fi
+
+  if command -v nvcc >/dev/null 2>&1; then
+    echo "[ok] nvcc found: $(command -v nvcc)"
+  else
+    echo "[info] nvcc not found on PATH; CMake may still find CUDA through the toolkit installation"
+  fi
+}
+
+ensure_source_checkout() {
+  mkdir -p "$(dirname "$LLAMA_CPP_DIR")"
+
+  if [[ ! -e "$LLAMA_CPP_DIR" ]]; then
+    echo "Cloning llama.cpp into $LLAMA_CPP_DIR"
+    git clone "$LLAMA_CPP_REPO" "$LLAMA_CPP_DIR"
+    return 0
+  fi
+
+  if [[ ! -d "$LLAMA_CPP_DIR/.git" ]]; then
+    echo "Path exists but is not a git checkout: $LLAMA_CPP_DIR" >&2
+    echo "Move it aside or set LLAMA_CPP_DIR to another path." >&2
+    exit 1
+  fi
+
+  if [[ "$UPDATE_SOURCE" != "true" ]]; then
+    echo "Skipping llama.cpp update (--no-update)."
+    return 0
+  fi
+
+  local dirty
+  dirty="$(git -C "$LLAMA_CPP_DIR" status --porcelain)"
+  if [[ -n "$dirty" ]]; then
+    echo "llama.cpp checkout has local changes; refusing to pull:" >&2
+    git -C "$LLAMA_CPP_DIR" status --short >&2
+    echo "Commit/stash those changes, rerun with --no-update, or set LLAMA_CPP_DIR to a clean checkout." >&2
+    exit 1
+  fi
+
+  echo "Updating llama.cpp in $LLAMA_CPP_DIR"
+  git -C "$LLAMA_CPP_DIR" pull --ff-only
+}
+
+configure_and_build() {
+  local generator_args=()
+  if command -v ninja >/dev/null 2>&1; then
+    generator_args=(-G Ninja)
+  fi
+
+  if [[ "$CLEAN_BUILD" == "true" ]]; then
+    echo "Removing build directory: $BUILD_DIR"
+    rm -rf "$BUILD_DIR"
+  fi
+
+  echo "Configuring llama.cpp CUDA build"
+  cmake "$LLAMA_CPP_DIR" \
+    -B "$BUILD_DIR" \
+    "${generator_args[@]}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DGGML_CUDA=ON \
+    -DLLAMA_CURL=ON
+
+  echo "Building llama.cpp targets"
+  cmake --build "$BUILD_DIR" \
+    --config Release \
+    -j \
+    --target llama-server llama-cli llama-mtmd-cli
+}
+
+verify_binaries() {
+  local binary
+  for binary in llama-server llama-cli llama-mtmd-cli; do
+    if [[ ! -x "$BUILD_DIR/bin/$binary" ]]; then
+      echo "Expected binary was not built: $BUILD_DIR/bin/$binary" >&2
+      exit 1
+    fi
+    echo "[ok] built $BUILD_DIR/bin/$binary"
+  done
+
+  echo "llama-server version/help:"
+  print_binary_version "$BUILD_DIR/bin/llama-server"
+}
+
+existing="$(existing_llama_server || true)"
+if [[ -n "$existing" && "$existing" != "$BUILD_DIR/bin/llama-server" ]]; then
+  echo "llama-server already available: $existing"
+  print_binary_version "$existing"
+  echo
+  echo "To force a source build anyway, set LLAMA_SERVER_BIN=\"$BUILD_DIR/bin/llama-server\" or remove the existing binary from PATH."
   exit 0
 fi
 
-echo "llama-server was not found on PATH."
-echo "Recommended DGX Spark build path:"
-echo "  git clone https://github.com/ggml-org/llama.cpp ~/src/llama.cpp"
-echo "  cmake ~/src/llama.cpp -B ~/src/llama.cpp/build -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON -DLLAMA_CURL=ON"
-echo "  cmake --build ~/src/llama.cpp/build --config Release -j --target llama-server llama-cli llama-mtmd-cli"
-echo "  export LLAMA_SERVER_BIN=~/src/llama.cpp/build/bin/llama-server"
-exit 1
+install_prereqs
+check_cuda_visibility
+ensure_source_checkout
+configure_and_build
+verify_binaries
+
+cat <<EOF
+
+llama.cpp CUDA build is ready.
+
+Add this to .env if llama-server is not on PATH:
+LLAMA_SERVER_BIN="$BUILD_DIR/bin/llama-server"
+
+Source checkout:
+$LLAMA_CPP_DIR
+
+Build directory:
+$BUILD_DIR
+EOF

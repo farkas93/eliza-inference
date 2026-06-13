@@ -27,7 +27,28 @@ Run:
 ./scripts/install-llamacpp
 ```
 
-If it prints build instructions, build llama.cpp with CUDA and set `LLAMA_SERVER_BIN` in `.env`.
+The installer clones or updates llama.cpp under `~/src/llama.cpp`, installs common apt build prerequisites when possible, and builds CUDA-enabled `llama-server`, `llama-cli`, and `llama-mtmd-cli`.
+
+If CMake configuration fails, confirm CUDA/toolkit visibility:
+
+```bash
+nvidia-smi
+which nvcc || true
+```
+
+If the source checkout has local changes, either commit/stash them, use another directory, or skip updates:
+
+```bash
+./scripts/install-llamacpp --no-update
+```
+
+If the build cache is stale, rebuild from a clean build directory:
+
+```bash
+./scripts/install-llamacpp --clean
+```
+
+After a successful build, add the printed `LLAMA_SERVER_BIN` line to `.env` if `llama-server` is not on `PATH`.
 
 ## vLLM Missing Or Broken
 
