@@ -69,6 +69,7 @@ parse_service_profile() {
       voice-llm) PROFILE="voice-gemma4-e4b-default" ;;
       stt) PROFILE="stt-faster-whisper-large-v3" ;;
       tts) PROFILE="tts-piper-lessac" ;;
+      voice-assistant) PROFILE="voice-assistant-local" ;;
       *)
         echo "No default profile for service: $SERVICE" >&2
         exit 2

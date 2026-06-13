@@ -32,7 +32,7 @@ Start speech services independently:
 ./scripts/start stt --profile stt-faster-whisper-large-v3
 ./scripts/smoke-test stt
 
-./scripts/download-models tts --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts-piper-lessac
 ./scripts/start tts --profile tts-piper-lessac
 ./scripts/smoke-test tts
 ```

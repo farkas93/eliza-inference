@@ -30,6 +30,7 @@ The doctor checks common tools, NVIDIA visibility, default ports, model director
 ./scripts/install
 ./scripts/install-vllm
 ./scripts/install-llamacpp
+./scripts/install-tts --backend piper --profile tts-piper-lessac
 ```
 
 `scripts/install` bootstraps `uv` if it is missing and installs `git-lfs` through `apt` when `sudo` is available. If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
@@ -55,4 +56,15 @@ Useful options:
 ./scripts/install-vllm --pre
 ./scripts/install-vllm --package vllm
 ./scripts/install-vllm --torch-backend auto
+```
+
+`install-tts` installs and verifies the selected TTS backend. The default supported backend is Piper through the `piper-tts` Python package. It downloads the selected voice profile, verifies the voice files, synthesizes `tmp/piper-install-test.wav`, and prints the `PIPER_BIN` setting to add to `.env` if needed.
+
+Useful options:
+
+```bash
+./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts-piper-amy
+./scripts/install-tts --backend piper --profile tts-piper-lessac --no-download
+./scripts/install-tts --backend piper --profile tts-piper-lessac --no-install
 ```

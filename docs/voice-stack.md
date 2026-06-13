@@ -60,6 +60,14 @@ Start the full service set for a Vocode pipeline:
 ./scripts/start tts --profile tts-piper-lessac
 ```
 
+Run the HTTP pipeline smoke test:
+
+```bash
+./scripts/smoke-test voice-assistant --profile voice-assistant-local
+```
+
+This tests the hosted service chain that Vocode will orchestrate, without requiring live microphone/speaker setup.
+
 Vocode client URLs:
 
 ```bash

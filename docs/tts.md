@@ -27,9 +27,31 @@ curl http://127.0.0.1:8012/v1/audio/speech \
 ## Commands
 
 ```bash
-./scripts/download-models tts --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts-piper-lessac
 ./scripts/start tts --profile tts-piper-lessac
 ./scripts/smoke-test tts
 ```
 
-`piper` must be available on `PATH`, or set `PIPER_BIN` in `.env`.
+`install-tts` installs `piper-tts` into the project environment, downloads the selected voice, and verifies synthesis by writing:
+
+```text
+tmp/piper-install-test.wav
+```
+
+If the installer prints a `PIPER_BIN=...` line, add it to `.env`.
+
+The TTS smoke test writes:
+
+```text
+tmp/tts-smoke-test.wav
+```
+
+If the Spark has local audio output, play it with:
+
+```bash
+aplay tmp/tts-smoke-test.wav
+```
+
+## Piper Notes
+
+The current installer uses the modern `piper-tts` Python package from the Open Home Foundation Piper project. That package is GPL-3.0-or-later. The older Rhasspy Piper repository is archived; it can still be used manually, but it is not the default installer path.

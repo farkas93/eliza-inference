@@ -30,6 +30,16 @@ check "git-lfs is available" command -v git-lfs
 check "curl is available" command -v curl
 check "nvidia-smi is available" command -v nvidia-smi
 
+if [[ -n "${PIPER_BIN:-}" && -x "${PIPER_BIN:-}" ]]; then
+  echo "[ok]   piper is available at $PIPER_BIN"
+elif [[ -x "$ROOT_DIR/.venv/bin/piper" ]]; then
+  echo "[ok]   piper is available at $ROOT_DIR/.venv/bin/piper"
+elif command -v piper >/dev/null 2>&1; then
+  echo "[ok]   piper is available at $(command -v piper)"
+else
+  echo "[info] piper is not installed yet; run ./scripts/install-tts --backend piper when testing TTS"
+fi
+
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || true
 fi

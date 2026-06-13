@@ -83,6 +83,34 @@ If a pre-release vLLM is needed for GB10 support:
 
 Use a recent llama.cpp build. Prefer `mmproj-BF16.gguf` for Gemma 4 audio. Start with text-only smoke tests before direct audio tests.
 
+## Piper TTS Missing Or Broken
+
+Install and verify Piper with:
+
+```bash
+./scripts/install-tts --backend piper --profile tts-piper-lessac
+```
+
+If the installer succeeds but the TTS service fails, make sure `.env` contains the printed `PIPER_BIN` value, then restart the service:
+
+```bash
+./scripts/restart tts --profile tts-piper-lessac
+./scripts/smoke-test tts --profile tts-piper-lessac
+```
+
+If synthesis fails, verify the voice files exist:
+
+```bash
+ls -lh ~/models/tts/piper-voices/en/en_US/lessac/medium/
+```
+
+The expected files are:
+
+```text
+en_US-lessac-medium.onnx
+en_US-lessac-medium.onnx.json
+```
+
 ## Qwen OOM
 
 Try profiles in this order:

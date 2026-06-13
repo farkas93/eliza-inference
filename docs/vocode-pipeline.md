@@ -37,3 +37,38 @@ POST /v1/audio/speech
 ```
 
 Start with utterance-level STT and response-level TTS. Add streaming and barge-in after the separate services are stable.
+
+## Full Pipeline Smoke Test
+
+Before wiring live microphone/speaker Vocode adapters, test the same service boundaries over HTTP:
+
+```bash
+./scripts/start stt --profile stt-faster-whisper-large-v3
+./scripts/start voice-llm --profile voice-gemma4-e4b-default
+./scripts/start tts --profile tts-piper-lessac
+./scripts/smoke-test voice-assistant --profile voice-assistant-local
+```
+
+The `voice-assistant` smoke test does not use a live microphone. It performs a deterministic end-to-end pipeline:
+
+```text
+input text
+  -> TTS creates prompt WAV
+  -> STT transcribes prompt WAV
+  -> voice-llm answers transcript
+  -> TTS creates response WAV
+```
+
+The response audio is written to:
+
+```text
+tmp/voice-pipeline-response.wav
+```
+
+If this passes, the hosted components are ready for Vocode adapter work. If this fails, debug the individual services first:
+
+```bash
+./scripts/smoke-test stt
+./scripts/smoke-test voice-llm
+./scripts/smoke-test tts
+```

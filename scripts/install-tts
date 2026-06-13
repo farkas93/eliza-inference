@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+BACKEND="piper"
+PROFILE="tts-piper-lessac"
+INSTALL_BACKEND="true"
+DOWNLOAD_VOICE="true"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backend)
+      BACKEND="${2:-}"
+      shift 2
+      ;;
+    --profile)
+      PROFILE="${2:-}"
+      shift 2
+      ;;
+    --no-install)
+      INSTALL_BACKEND="false"
+      shift
+      ;;
+    --no-download)
+      DOWNLOAD_VOICE="false"
+      shift
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/install-tts [options]
+
+Installs and verifies a TTS backend. Defaults to Piper.
+
+Options:
+  --backend BACKEND   Backend to install. Currently supported: piper
+  --profile PROFILE   TTS profile to verify. Default: tts-piper-lessac
+  --no-install        Skip backend package installation and only verify.
+  --no-download       Skip voice model download and only verify existing files.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$BACKEND" != "piper" ]]; then
+  echo "Unsupported TTS backend: $BACKEND" >&2
+  echo "Currently supported: piper" >&2
+  exit 2
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required. Run ./scripts/install first." >&2
+  exit 1
+fi
+
+PROFILE_PATH="$ROOT_DIR/configs/profiles/$PROFILE.env"
+if [[ ! -f "$PROFILE_PATH" ]]; then
+  echo "Profile not found: $PROFILE_PATH" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$PROFILE_PATH"
+set +a
+
+if [[ "${SERVICE_NAME:-}" != "tts" ]]; then
+  echo "Profile is not a TTS profile: $PROFILE" >&2
+  exit 1
+fi
+
+if [[ "${BACKEND:-piper}" != "piper" ]]; then
+  echo "Profile backend is not piper: ${BACKEND:-}" >&2
+  exit 1
+fi
+
+install_piper() {
+  echo "Syncing base project dependencies"
+  uv sync --project "$ROOT_DIR"
+
+  if [[ "$INSTALL_BACKEND" == "true" ]]; then
+    echo "Installing piper-tts into the project environment"
+    uv pip install --project "$ROOT_DIR" -U piper-tts
+  else
+    echo "Skipping piper-tts install (--no-install)."
+  fi
+}
+
+resolve_piper_bin() {
+  local candidates=()
+
+  if [[ -n "${PIPER_BIN:-}" ]]; then
+    candidates+=("$PIPER_BIN")
+  fi
+
+  candidates+=("$ROOT_DIR/.venv/bin/piper")
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  if uv run --project "$ROOT_DIR" piper --help >/dev/null 2>&1; then
+    echo "uv-run:piper"
+    return 0
+  fi
+
+  if command -v piper >/dev/null 2>&1; then
+    command -v piper
+    return 0
+  fi
+
+  return 1
+}
+
+run_piper() {
+  local piper_bin="$1"
+  shift
+
+  if [[ "$piper_bin" == "uv-run:piper" ]]; then
+    uv run --project "$ROOT_DIR" piper "$@"
+  else
+    "$piper_bin" "$@"
+  fi
+}
+
+download_voice() {
+  if [[ "$DOWNLOAD_VOICE" == "true" ]]; then
+    "$ROOT_DIR/scripts/download-models" tts --profile "$PROFILE"
+  else
+    echo "Skipping voice download (--no-download)."
+  fi
+}
+
+verify_voice_files() {
+  if [[ -z "${PIPER_VOICE_PATH:-}" ]]; then
+    echo "PIPER_VOICE_PATH is not set by profile $PROFILE" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$PIPER_VOICE_PATH" ]]; then
+    echo "Piper voice model not found: $PIPER_VOICE_PATH" >&2
+    exit 1
+  fi
+
+  if [[ -n "${PIPER_CONFIG_PATH:-}" && ! -f "$PIPER_CONFIG_PATH" ]]; then
+    echo "Piper voice config not found: $PIPER_CONFIG_PATH" >&2
+    exit 1
+  fi
+
+  echo "[ok] voice model: $PIPER_VOICE_PATH"
+  if [[ -n "${PIPER_CONFIG_PATH:-}" ]]; then
+    echo "[ok] voice config: $PIPER_CONFIG_PATH"
+  fi
+}
+
+verify_synthesis() {
+  local piper_bin="$1"
+  local output_path="$ROOT_DIR/tmp/piper-install-test.wav"
+  mkdir -p "$ROOT_DIR/tmp"
+
+  local cmd=(--model "$PIPER_VOICE_PATH" --output_file "$output_path")
+  if [[ -n "${PIPER_CONFIG_PATH:-}" ]]; then
+    cmd+=(--config "$PIPER_CONFIG_PATH")
+  fi
+
+  echo "Verifying Piper synthesis"
+  run_piper "$piper_bin" "${cmd[@]}" <<<"Piper text to speech is working."
+
+  if [[ ! -s "$output_path" ]]; then
+    echo "Piper synthesis did not create a non-empty WAV: $output_path" >&2
+    exit 1
+  fi
+
+  echo "[ok] synthesized test WAV: $output_path"
+}
+
+install_piper
+
+piper_bin="$(resolve_piper_bin || true)"
+if [[ -z "$piper_bin" ]]; then
+  echo "Could not find a working piper executable after installation." >&2
+  exit 1
+fi
+
+echo "[ok] piper executable: $piper_bin"
+run_piper "$piper_bin" --help >/dev/null
+
+download_voice
+verify_voice_files
+verify_synthesis "$piper_bin"
+
+cat <<EOF
+
+Piper TTS installation verification completed.
+
+Add this to .env if PIPER_BIN is not already set:
+PIPER_BIN="${piper_bin#uv-run:}"
+
+Next test:
+  ./scripts/start tts --profile $PROFILE
+  ./scripts/smoke-test tts --profile $PROFILE
+EOF
