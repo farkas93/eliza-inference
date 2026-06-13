@@ -55,7 +55,7 @@ Gemma 4 E4B is the default because it supports audio-capable multimodal operatio
 Start the full service set for a Vocode pipeline:
 
 ```bash
-./scripts/start stt --profile stt-faster-whisper-large-v3
+./scripts/start stt --profile stt-faster-whisper-small-cpu
 ./scripts/start voice-llm --profile voice-gemma4-e4b-default
 ./scripts/start tts --profile tts-piper-lessac
 ```

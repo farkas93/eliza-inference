@@ -67,7 +67,7 @@ parse_service_profile() {
     case "$SERVICE" in
       qwen-coder) PROFILE="qwen-shared-200k" ;;
       voice-llm) PROFILE="voice-gemma4-e4b-default" ;;
-      stt) PROFILE="stt-faster-whisper-large-v3" ;;
+      stt) PROFILE="stt-faster-whisper-small-cpu" ;;
       tts) PROFILE="tts-piper-lessac" ;;
       voice-assistant) PROFILE="voice-assistant-local" ;;
       *)

@@ -111,6 +111,24 @@ en_US-lessac-medium.onnx
 en_US-lessac-medium.onnx.json
 ```
 
+## faster-whisper CUDA Not Available
+
+If STT returns this error:
+
+```text
+This CTranslate2 package was not compiled with CUDA support
+```
+
+the installed CTranslate2 wheel is CPU-only. Use the CPU STT profile:
+
+```bash
+./scripts/stop stt --profile stt-faster-whisper-small
+./scripts/start stt --profile stt-faster-whisper-small-cpu
+./scripts/smoke-test stt --profile stt-faster-whisper-small-cpu
+```
+
+For the full voice pipeline, `voice-assistant-local` now expects `whisper-small` by default. GPU STT should be treated as a later optimization via CUDA-enabled CTranslate2 or a whisper.cpp backend.
+
 ## Qwen OOM
 
 Try profiles in this order:

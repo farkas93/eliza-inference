@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=forking
 WorkingDirectory=%h/private/eliza-inference
-ExecStart=%h/private/eliza-inference/scripts/start stt --profile stt-faster-whisper-large-v3
-ExecStop=%h/private/eliza-inference/scripts/stop stt --profile stt-faster-whisper-large-v3
+ExecStart=%h/private/eliza-inference/scripts/start stt --profile stt-faster-whisper-small-cpu
+ExecStop=%h/private/eliza-inference/scripts/stop stt --profile stt-faster-whisper-small-cpu
 Restart=on-failure
 
 [Install]

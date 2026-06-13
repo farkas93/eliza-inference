@@ -43,7 +43,7 @@ Start with utterance-level STT and response-level TTS. Add streaming and barge-i
 Before wiring live microphone/speaker Vocode adapters, test the same service boundaries over HTTP:
 
 ```bash
-./scripts/start stt --profile stt-faster-whisper-large-v3
+./scripts/start stt --profile stt-faster-whisper-small-cpu
 ./scripts/start voice-llm --profile voice-gemma4-e4b-default
 ./scripts/start tts --profile tts-piper-lessac
 ./scripts/smoke-test voice-assistant --profile voice-assistant-local
