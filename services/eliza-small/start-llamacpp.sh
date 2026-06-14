@@ -44,5 +44,5 @@ elif [[ "${FLASH_ATTN:-auto}" == "on" ]]; then
   cmd+=(--flash-attn on)
 fi
 
-echo "Starting voice-llm llama.cpp: ${cmd[*]}"
+echo "Starting eliza-small llama.cpp: ${cmd[*]}"
 exec "${cmd[@]}"

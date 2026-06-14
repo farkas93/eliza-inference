@@ -9,7 +9,7 @@ case "${BACKEND:-llamacpp}" in
     exec "$(dirname "$0")/start-vllm.sh"
     ;;
   *)
-    echo "Unsupported voice backend: ${BACKEND:-}" >&2
+    echo "Unsupported eliza-medium backend: ${BACKEND:-}" >&2
     exit 2
     ;;
 esac

@@ -5,7 +5,7 @@ The intended Vocode integration is service-oriented. Vocode should orchestrate H
 ```text
 Vocode microphone input
   -> STT service (:8011)
-  -> Voice LLM service (:8002)
+  -> eliza-small service (:8002)
   -> TTS service (:8012)
   -> Vocode speaker output
 ```
@@ -14,7 +14,7 @@ Vocode microphone input
 
 ```bash
 STT_BASE_URL="http://127.0.0.1:8011/v1"
-VOICE_LLM_BASE_URL="http://127.0.0.1:8002/v1"
+ELIZA_SMALL_BASE_URL="http://127.0.0.1:8002/v1"
 TTS_BASE_URL="http://127.0.0.1:8012/v1"
 ```
 
@@ -22,7 +22,7 @@ TTS_BASE_URL="http://127.0.0.1:8012/v1"
 
 ```bash
 STT_BASE_URL="http://dgx-spark:8011/v1"
-VOICE_LLM_BASE_URL="http://dgx-spark:8002/v1"
+ELIZA_SMALL_BASE_URL="http://dgx-spark:8002/v1"
 TTS_BASE_URL="http://dgx-spark:8012/v1"
 ```
 
@@ -46,7 +46,7 @@ Before wiring live microphone/speaker Vocode adapters, test the same service bou
 
 ```bash
 ./scripts/start stt --profile stt-faster-whisper-small-cpu
-./scripts/start voice-llm --profile voice-gemma4-e4b-default
+./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
 ./scripts/start tts --profile tts-piper-lessac
 ./scripts/smoke-test voice-assistant --profile voice-assistant-local
 ```
@@ -57,7 +57,7 @@ The `voice-assistant` smoke test does not use a live microphone. It performs a d
 input text
   -> TTS creates prompt WAV
   -> STT transcribes prompt WAV
-  -> voice-llm answers transcript
+  -> eliza-small answers transcript
   -> TTS creates response WAV
 ```
 
@@ -71,6 +71,6 @@ If this passes, the hosted components are ready for Vocode adapter work. If this
 
 ```bash
 ./scripts/smoke-test stt
-./scripts/smoke-test voice-llm
+./scripts/smoke-test eliza-small
 ./scripts/smoke-test tts
 ```

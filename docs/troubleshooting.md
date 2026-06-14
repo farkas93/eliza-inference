@@ -5,8 +5,8 @@
 Check the tmux session and logs:
 
 ```bash
-./scripts/status voice-llm
-./scripts/logs voice-llm
+./scripts/status eliza-small
+./scripts/logs eliza-small
 ```
 
 ## Port Already In Use
@@ -162,23 +162,23 @@ For the full voice pipeline, `voice-assistant-local` now expects `whisper-small`
 Try profiles in this order:
 
 ```text
-qwen-llamacpp-32k
-vllm-smoke-tinyllama
-qwen-smoke-8k
-qwen-smoke-32k
-qwen-shared-128k
-qwen-shared-200k
-qwen-shared-200k-fp8kv
+eliza-medium-qwen-llamacpp-32k
+eliza-medium-vllm-smoke-tinyllama
+eliza-medium-qwen-vllm-smoke-8k
+eliza-medium-qwen-vllm-smoke-32k
+eliza-medium-qwen-vllm-128k-experimental
+eliza-medium-qwen-vllm-200k-experimental
+eliza-medium-qwen-vllm-200k-fp8kv-experimental
 ```
 
-Stop `voice-llm` before testing `qwen-solo-262k`.
+Stop `eliza-small` before testing larger `eliza-medium` profiles.
 
-If Qwen hangs during vLLM model load with no API port listening, first test `qwen-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
+If Qwen hangs during vLLM model load with no API port listening, first test `eliza-medium-qwen-vllm-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
 
 If vLLM remains unreliable, clean it up and use the llama.cpp Qwen profile:
 
 ```bash
 ./scripts/cleanup-vllm
-./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
-./scripts/start qwen-coder --profile qwen-llamacpp-32k
+./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
 ```

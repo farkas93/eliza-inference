@@ -1,0 +1,14 @@
+[Unit]
+Description=Eliza Small Low-Latency Model Endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+WorkingDirectory=%h/private/eliza-inference
+ExecStart=%h/private/eliza-inference/scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
+ExecStop=%h/private/eliza-inference/scripts/stop eliza-small --profile eliza-small-gemma4-e2b-fast
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

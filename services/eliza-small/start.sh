@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-case "${BACKEND:-vllm}" in
+case "${BACKEND:-llamacpp}" in
   llamacpp)
     exec "$(dirname "$0")/start-llamacpp.sh"
     ;;
@@ -9,7 +9,7 @@ case "${BACKEND:-vllm}" in
     exec "$(dirname "$0")/start-vllm.sh"
     ;;
   *)
-    echo "Unsupported qwen-coder backend: ${BACKEND:-}" >&2
+    echo "Unsupported eliza-small backend: ${BACKEND:-}" >&2
     exit 2
     ;;
 esac

@@ -38,7 +38,7 @@ hf_download() {
 }
 
 case "$SERVICE" in
-  qwen-coder)
+  eliza-medium)
     if [[ "${BACKEND:-vllm}" == "llamacpp" ]]; then
       mkdir -p "$MODEL_DIR"
       echo "Downloading qwen-coder GGUF files from $MODEL_REPO into $MODEL_DIR"
@@ -50,7 +50,7 @@ case "$SERVICE" in
       hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
     fi
     ;;
-  voice-llm)
+  eliza-small)
     if [[ "${BACKEND:-llamacpp}" == "llamacpp" ]]; then
       mkdir -p "$MODEL_DIR"
       echo "Downloading voice GGUF files from $MODEL_REPO into $MODEL_DIR"

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "health: voice-assistant placeholder; check stt, voice-llm, and tts separately"
+echo "health: voice-assistant placeholder; check stt, eliza-small, and tts separately"

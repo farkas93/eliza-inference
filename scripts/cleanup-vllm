@@ -31,7 +31,7 @@ Usage: ./scripts/cleanup-vllm [--dry-run] [--purge-cache] [--purge-logs]
 Stops stale vLLM sessions and removes the isolated vLLM environment.
 
 Default cleanup:
-  - kill eliza-qwen-coder tmux session if present
+  - kill eliza-medium/eliza-qwen-coder tmux sessions if present
   - remove .venvs/vllm
 
 Optional cleanup:
@@ -78,11 +78,13 @@ move_log() {
 
 echo "Cleaning vLLM runtime state in $ROOT_DIR"
 
-if command -v tmux >/dev/null 2>&1 && tmux has-session -t eliza-qwen-coder >/dev/null 2>&1; then
-  run tmux kill-session -t eliza-qwen-coder
-else
-  echo "[skip] no tmux session: eliza-qwen-coder"
-fi
+for session in eliza-medium eliza-qwen-coder; do
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session" >/dev/null 2>&1; then
+    run tmux kill-session -t "$session"
+  else
+    echo "[skip] no tmux session: $session"
+  fi
+done
 
 remove_path "$VLLM_VENV"
 
@@ -104,7 +106,7 @@ cat <<EOF
 
 Recommended stable path now:
   ./scripts/install-llamacpp
-  ./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
-  ./scripts/start qwen-coder --profile qwen-llamacpp-32k
-  ./scripts/smoke-test qwen-coder --profile qwen-llamacpp-32k
+  ./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+  ./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+  ./scripts/smoke-test eliza-medium --profile eliza-medium-qwen-llamacpp-32k
 EOF

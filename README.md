@@ -1,13 +1,13 @@
 # Eliza Inference
 
-DGX Spark-first local inference stack for a long-context Qwen coding endpoint and a low-latency Gemma voice LLM endpoint.
+DGX Spark-first local inference stack exposing `eliza-small` for low-latency voice turns and `eliza-medium` for larger reasoning/coding tasks.
 
 ## Defaults
 
 | Service | Default Runtime | Default Model | Port |
 | --- | --- | --- | ---: |
-| `qwen-coder` | llama.cpp | `unsloth/Qwen3.6-27B-GGUF` | `8001` |
-| `voice-llm` | llama.cpp | `unsloth/gemma-4-E4B-it-GGUF` | `8002` |
+| `eliza-medium` | llama.cpp | `unsloth/Qwen3.6-27B-GGUF` | `8001` |
+| `eliza-small` | llama.cpp | `unsloth/gemma-4-E2B-it-GGUF` | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
 | `vocode-bridge` | FastAPI WS bridge | STT/TTS transport spike | `8021` |
@@ -20,9 +20,9 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 ./scripts/doctor
 ./scripts/install
 ./scripts/install-llamacpp
-./scripts/download-models voice-llm --profile voice-gemma4-e4b-default
-./scripts/start voice-llm --profile voice-gemma4-e4b-default
-./scripts/smoke-test voice-llm
+./scripts/download-models eliza-small --profile eliza-small-gemma4-e2b-fast
+./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
+./scripts/smoke-test eliza-small
 ```
 
 Start speech services independently:
@@ -40,9 +40,9 @@ Start speech services independently:
 Start Qwen separately:
 
 ```bash
-./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
-./scripts/start qwen-coder --profile qwen-llamacpp-32k
-./scripts/smoke-test qwen-coder
+./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/smoke-test eliza-medium
 ```
 
 ## Profiles
@@ -54,13 +54,13 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 ## Common Commands
 
 ```bash
-./scripts/start qwen-coder --profile qwen-llamacpp-32k
-./scripts/start voice-llm --profile voice-gemma4-e4b-default
-./scripts/status qwen-coder
-./scripts/logs voice-llm
-./scripts/stop voice-llm
-./scripts/benchmark-latency voice-llm
-./scripts/benchmark-context qwen-coder --tokens 200000
+./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
+./scripts/status eliza-medium
+./scripts/logs eliza-small
+./scripts/stop eliza-small
+./scripts/benchmark-latency eliza-small
+./scripts/benchmark-context eliza-medium --tokens 32000
 ```
 
 vLLM profiles are experimental on GB10 in this repo. To remove the local vLLM environment and return to the llama.cpp-first path:
@@ -82,7 +82,7 @@ Vocode should call each local service over HTTP:
 
 ```text
 STT:       http://dgx-spark:8011/v1/audio/transcriptions
-Voice LLM: http://dgx-spark:8002/v1/chat/completions
+Eliza Small: http://dgx-spark:8002/v1/chat/completions
 TTS:       http://dgx-spark:8012/v1/audio/speech
 ```
 

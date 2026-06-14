@@ -6,7 +6,7 @@ The model runtimes are intentionally separate services:
 
 ```text
 STT:       http://127.0.0.1:8011/v1
-Voice LLM: http://127.0.0.1:8002/v1
+Eliza Small: http://127.0.0.1:8002/v1
 TTS:       http://127.0.0.1:8012/v1
 ```
 

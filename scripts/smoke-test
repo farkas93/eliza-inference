@@ -35,8 +35,8 @@ case "$SERVICE" in
     "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/pipeline_test.py" \
       --stt-base-url "${STT_BASE_URL:?STT_BASE_URL is required}" \
       --stt-model "${STT_MODEL:?STT_MODEL is required}" \
-      --llm-base-url "${VOICE_LLM_BASE_URL:?VOICE_LLM_BASE_URL is required}" \
-      --llm-model "${VOICE_LLM_MODEL:?VOICE_LLM_MODEL is required}" \
+      --llm-base-url "${ELIZA_SMALL_BASE_URL:?ELIZA_SMALL_BASE_URL is required}" \
+      --llm-model "${ELIZA_SMALL_MODEL:?ELIZA_SMALL_MODEL is required}" \
       --tts-base-url "${TTS_BASE_URL:?TTS_BASE_URL is required}" \
       --tts-model "${TTS_MODEL:?TTS_MODEL is required}" \
       --tts-voice "${TTS_VOICE:-default}"

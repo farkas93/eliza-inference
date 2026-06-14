@@ -45,5 +45,5 @@ if [[ -n "${PARALLEL:-}" ]]; then
   cmd+=(--parallel "$PARALLEL")
 fi
 
-echo "Starting qwen-coder llama.cpp: ${cmd[*]}"
+echo "Starting eliza-medium llama.cpp: ${cmd[*]}"
 exec "${cmd[@]}"

@@ -20,8 +20,8 @@ load_env() {
   VLLM_VENV="${VLLM_VENV:-$ELIZA_VENV_DIR/vllm}"
   VOCODE_VENV="${VOCODE_VENV:-$ELIZA_VENV_DIR/vocode}"
   DEFAULT_HOST="${DEFAULT_HOST:-0.0.0.0}"
-  QWEN_CODER_PORT="${QWEN_CODER_PORT:-8001}"
-  VOICE_LLM_PORT="${VOICE_LLM_PORT:-8002}"
+  ELIZA_MEDIUM_PORT="${ELIZA_MEDIUM_PORT:-8001}"
+  ELIZA_SMALL_PORT="${ELIZA_SMALL_PORT:-8002}"
   STT_PORT="${STT_PORT:-8011}"
   TTS_PORT="${TTS_PORT:-8012}"
   VOCODE_BRIDGE_PORT="${VOCODE_BRIDGE_PORT:-8021}"
@@ -32,7 +32,7 @@ load_env() {
     PIPER_BIN="$TTS_VENV/bin/piper"
   fi
 
-  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV VOCODE_VENV DEFAULT_HOST QWEN_CODER_PORT VOICE_LLM_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
+  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV VOCODE_VENV DEFAULT_HOST ELIZA_MEDIUM_PORT ELIZA_SMALL_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
 }
 
 venv_python() {
@@ -41,7 +41,7 @@ venv_python() {
     base) echo "$BASE_VENV/bin/python" ;;
     stt) echo "$STT_VENV/bin/python" ;;
     tts) echo "$TTS_VENV/bin/python" ;;
-    vllm|qwen-coder|voice-llm-vllm) echo "$VLLM_VENV/bin/python" ;;
+    vllm|eliza-medium|eliza-small-vllm) echo "$VLLM_VENV/bin/python" ;;
     vocode|vocode-bridge) echo "$VOCODE_VENV/bin/python" ;;
     *) echo "$BASE_VENV/bin/python" ;;
   esac
@@ -64,8 +64,8 @@ usage_service_profile() {
 Usage: ./scripts/$command_name <service> [--profile <profile-name>]
 
 Examples:
-  ./scripts/$command_name qwen-coder --profile qwen-shared-200k
-  ./scripts/$command_name voice-llm --profile voice-gemma4-e4b-default
+  ./scripts/$command_name eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+  ./scripts/$command_name eliza-small --profile eliza-small-gemma4-e2b-fast
 USAGE
 }
 
@@ -98,8 +98,8 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      qwen-coder) PROFILE="qwen-llamacpp-32k" ;;
-      voice-llm) PROFILE="voice-gemma4-e4b-default" ;;
+      eliza-medium) PROFILE="eliza-medium-qwen-llamacpp-32k" ;;
+      eliza-small) PROFILE="eliza-small-gemma4-e2b-fast" ;;
       stt) PROFILE="stt-faster-whisper-small-cpu" ;;
       tts) PROFILE="tts-piper-lessac" ;;
       voice-assistant) PROFILE="voice-assistant-local" ;;
@@ -123,7 +123,11 @@ parse_service_profile() {
     exit 1
   fi
 
-  SESSION_NAME="eliza-$SERVICE"
+  if [[ "$SERVICE" == eliza-* ]]; then
+    SESSION_NAME="$SERVICE"
+  else
+    SESSION_NAME="eliza-$SERVICE"
+  fi
   LOG_FILE="$LOG_DIR/$SERVICE.log"
   export SERVICE PROFILE PROFILE_PATH SERVICE_DIR SESSION_NAME LOG_FILE
 }

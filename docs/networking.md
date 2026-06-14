@@ -4,8 +4,8 @@ Services bind to `0.0.0.0` by default so they are reachable on the LAN.
 
 | Service | Port |
 | --- | ---: |
-| `qwen-coder` | `8001` |
-| `voice-llm` | `8002` |
+| `eliza-medium` | `8001` |
+| `eliza-small` | `8002` |
 | `stt` | `8011` |
 | `tts` | `8012` |
 
