@@ -1,37 +1,36 @@
 # Qwen Coder
 
-`qwen-coder` serves `Qwen/Qwen3.6-27B-FP8` through vLLM.
+`qwen-coder` is llama.cpp-first on DGX Spark. vLLM profiles remain available for experimental GB10 work, but the operational default is GGUF via llama.cpp.
 
 ## Profiles
 
-| Profile | Context | KV Cache | Memory Utilization | Use |
-| --- | ---: | --- | ---: | --- |
-| `vllm-smoke-tinyllama` | `2048` | auto | `0.20` | vLLM runtime sanity test with a simple model |
-| `qwen-smoke-8k` | `8192` | auto | `0.50` | First vLLM/Qwen compatibility test |
-| `qwen-smoke-32k` | `32768` | auto | `0.50` | Second compatibility step |
-| `qwen-shared-128k` | `128000` | auto | `0.50` | Safer shared baseline |
-| `qwen-shared-200k` | `200000` | auto | `0.50` | Default target |
-| `qwen-shared-200k-fp8kv` | `200000` | fp8 | `0.50` | KV memory comparison |
-| `qwen-solo-262k` | `262144` | auto | `0.75` | Full native context, solo mode |
+| Profile | Runtime | Context | Use |
+| --- | --- | ---: | --- |
+| `qwen-llamacpp-32k` | llama.cpp | `32768` | First Qwen GGUF compatibility test |
+| `vllm-smoke-tinyllama` | vLLM | `2048` | Experimental vLLM runtime sanity test |
+| `qwen-smoke-8k` | vLLM | `8192` | Experimental vLLM/Qwen compatibility test |
+| `qwen-smoke-32k` | vLLM | `32768` | Experimental vLLM/Qwen step-up test |
+| `qwen-shared-128k` | vLLM | `128000` | Experimental vLLM long-context baseline |
+| `qwen-shared-200k` | vLLM | `200000` | Experimental vLLM target |
+| `qwen-shared-200k-fp8kv` | vLLM | `200000` | Experimental vLLM KV comparison |
+| `qwen-solo-262k` | vLLM | `262144` | Experimental full native context |
 
 ## Start
 
 ```bash
-./scripts/start qwen-coder --profile qwen-smoke-8k
-./scripts/smoke-test qwen-coder --profile qwen-smoke-8k
-
-./scripts/start qwen-coder --profile qwen-shared-200k
-./scripts/smoke-test qwen-coder
+./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
+./scripts/start qwen-coder --profile qwen-llamacpp-32k
+./scripts/smoke-test qwen-coder --profile qwen-llamacpp-32k
 ```
 
-Start with `qwen-smoke-8k` before testing 128K/200K. The smoke profiles disable prefix caching and use eager mode to avoid Qwen hybrid/Mamba prefix-cache and CUDA graph complexity during first validation.
+Start with `qwen-llamacpp-32k`. If that works, add/test larger llama.cpp context profiles before revisiting vLLM.
 
-If Qwen/Gemma vLLM profiles hang during model load, first test `vllm-smoke-tinyllama`. If TinyLlama also hangs, the issue is likely the vLLM/Torch/GB10 runtime rather than a Qwen-specific configuration.
+If Qwen/Gemma vLLM profiles hang during model load, treat vLLM as experimental on GB10. The current practical path is llama.cpp GGUF.
 
 ## Benchmark
 
 ```bash
-./scripts/benchmark-context qwen-coder --profile qwen-shared-200k --tokens 200000
+./scripts/benchmark-context qwen-coder --profile qwen-llamacpp-32k --tokens 32000
 ./scripts/benchmark-memory
 ```
 

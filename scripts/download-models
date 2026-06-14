@@ -39,8 +39,16 @@ hf_download() {
 
 case "$SERVICE" in
   qwen-coder)
-    echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
-    hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+    if [[ "${BACKEND:-vllm}" == "llamacpp" ]]; then
+      mkdir -p "$MODEL_DIR"
+      echo "Downloading qwen-coder GGUF files from $MODEL_REPO into $MODEL_DIR"
+      hf_download "$MODEL_REPO" \
+        --include "$MODEL_FILE" \
+        --local-dir "$MODEL_DIR"
+    else
+      echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
+      hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+    fi
     ;;
   voice-llm)
     if [[ "${BACKEND:-llamacpp}" == "llamacpp" ]]; then

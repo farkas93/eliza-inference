@@ -32,7 +32,6 @@ The doctor checks common tools, NVIDIA visibility, default ports, model director
 ./scripts/install-stt --profile stt-faster-whisper-small-cpu
 ./scripts/install-tts --backend piper --profile tts-piper-lessac
 ./scripts/install-vocode
-./scripts/install-vllm
 ```
 
 `scripts/install` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
@@ -61,7 +60,7 @@ Useful options:
 
 If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAMA_SERVER_BIN` line to `.env`.
 
-`install-vllm` installs vLLM into `.venvs/vllm`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU.
+`install-vllm` installs vLLM into `.venvs/vllm`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU. vLLM is currently experimental on GB10 in this repo; llama.cpp is the default runtime path.
 
 Useful options:
 

@@ -6,7 +6,7 @@ DGX Spark-first local inference stack for a long-context Qwen coding endpoint an
 
 | Service | Default Runtime | Default Model | Port |
 | --- | --- | --- | ---: |
-| `qwen-coder` | vLLM | `Qwen/Qwen3.6-27B-FP8` | `8001` |
+| `qwen-coder` | llama.cpp | `unsloth/Qwen3.6-27B-GGUF` | `8001` |
 | `voice-llm` | llama.cpp | `unsloth/gemma-4-E4B-it-GGUF` | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
@@ -40,9 +40,8 @@ Start speech services independently:
 Start Qwen separately:
 
 ```bash
-./scripts/install-vllm
-./scripts/download-models qwen-coder --profile qwen-shared-200k
-./scripts/start qwen-coder --profile qwen-shared-200k
+./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
+./scripts/start qwen-coder --profile qwen-llamacpp-32k
 ./scripts/smoke-test qwen-coder
 ```
 
@@ -55,7 +54,7 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 ## Common Commands
 
 ```bash
-./scripts/start qwen-coder --profile qwen-shared-200k
+./scripts/start qwen-coder --profile qwen-llamacpp-32k
 ./scripts/start voice-llm --profile voice-gemma4-e4b-default
 ./scripts/status qwen-coder
 ./scripts/logs voice-llm
