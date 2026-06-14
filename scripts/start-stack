@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+CONFIG_PATH="$ROOT_DIR/configs/eliza-stack.toml"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      CONFIG_PATH="$ROOT_DIR/${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/start-stack [--config configs/eliza-stack.toml]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -f "$CONFIG_PATH" ]]; then
+  echo "Stack config not found: $CONFIG_PATH" >&2
+  exit 1
+fi
+
+stack_config() {
+  if [[ -x "$BASE_VENV/bin/python" ]]; then
+    "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python >/dev/null 2>&1; then
+    python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v uv >/dev/null 2>&1; then
+    uv run --project "$ROOT_DIR" python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  else
+    echo "Python is required to parse stack TOML. Run ./scripts/install first." >&2
+    exit 1
+  fi
+}
+
+wait_for_health() {
+  local url="$1"
+  local name="$2"
+  local timeout_seconds="${3:-900}"
+  local started
+  started="$(date +%s)"
+
+  if [[ -z "$url" ]]; then
+    echo "[skip] no health URL for $name"
+    return 0
+  fi
+
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    if (( $(date +%s) - started > timeout_seconds )); then
+      echo "Timed out waiting for $name health: $url" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "[ok] $name healthy: $url"
+}
+
+echo "Starting Eliza stack from $CONFIG_PATH"
+
+while IFS=$'\t' read -r service profile health_url; do
+  [[ -z "$service" ]] && continue
+  echo "Starting $service ($profile)"
+  "$ROOT_DIR/scripts/start" "$service" --profile "$profile"
+  wait_for_health "$health_url" "$service"
+done < <(stack_config services --config "$CONFIG_PATH")
+
+echo
+echo "Eliza stack is running."
+"$ROOT_DIR/scripts/status-stack" --config "${CONFIG_PATH#$ROOT_DIR/}"

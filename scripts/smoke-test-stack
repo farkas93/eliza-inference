@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+CONFIG_PATH="$ROOT_DIR/configs/eliza-stack.toml"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      CONFIG_PATH="$ROOT_DIR/${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/smoke-test-stack [--config configs/eliza-stack.toml]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+stack_config() {
+  if [[ -x "$BASE_VENV/bin/python" ]]; then
+    "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python >/dev/null 2>&1; then
+    python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  else
+    uv run --project "$ROOT_DIR" python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  fi
+}
+
+while IFS=$'\t' read -r service profile _; do
+  [[ -z "$service" ]] && continue
+  echo "Smoke testing $service ($profile)"
+  "$ROOT_DIR/scripts/smoke-test" "$service" --profile "$profile"
+done < <(stack_config services --config "$CONFIG_PATH")

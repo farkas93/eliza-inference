@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+CONFIG_PATH="$ROOT_DIR/configs/eliza-stack.toml"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      CONFIG_PATH="$ROOT_DIR/${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/status-stack [--config configs/eliza-stack.toml]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+stack_config() {
+  if [[ -x "$BASE_VENV/bin/python" ]]; then
+    "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  elif command -v python >/dev/null 2>&1; then
+    python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  else
+    uv run --project "$ROOT_DIR" python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
+  fi
+}
+
+printf '%-16s %-42s %-8s %s\n' "SERVICE" "PROFILE" "STATUS" "HEALTH"
+while IFS=$'\t' read -r service profile health_url; do
+  [[ -z "$service" ]] && continue
+  session="$service"
+  if [[ "$service" != eliza-* ]]; then
+    session="eliza-$service"
+  fi
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session" >/dev/null 2>&1; then
+    status="running"
+  else
+    status="stopped"
+  fi
+  if [[ -n "$health_url" ]] && curl -fsS "$health_url" >/dev/null 2>&1; then
+    health="ok"
+  else
+    health="-"
+  fi
+  printf '%-16s %-42s %-8s %s\n' "$service" "$profile" "$status" "$health"
+done < <(stack_config services --config "$CONFIG_PATH")
+
+echo
+echo "Models:"
+stack_config models --config "$CONFIG_PATH" | while IFS=$'\t' read -r name service profile actual base_url; do
+  printf '  %-13s -> %-12s %-38s %s\n' "$name" "$service" "$actual" "$base_url"
+done

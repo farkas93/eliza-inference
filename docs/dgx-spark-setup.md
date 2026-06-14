@@ -24,6 +24,38 @@ Use `/models` only if you want a system-wide model directory and are prepared to
 
 The doctor checks common tools, NVIDIA visibility, default ports, model directory disk space, and Python availability.
 
+## Stack Startup
+
+The default stack is defined in:
+
+```text
+configs/eliza-stack.toml
+```
+
+Start everything enabled in that file:
+
+```bash
+./scripts/start-stack
+```
+
+Check status:
+
+```bash
+./scripts/status-stack
+```
+
+Smoke test the stack:
+
+```bash
+./scripts/smoke-test-stack
+```
+
+Stop everything in reverse order:
+
+```bash
+./scripts/stop-stack
+```
+
 ## Installation
 
 ```bash

@@ -20,10 +20,16 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 ./scripts/doctor
 ./scripts/install
 ./scripts/install-llamacpp
+./scripts/install-stt --profile stt-faster-whisper-small-cpu
+./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-vocode
 ./scripts/download-models eliza-small --profile eliza-small-gemma4-e2b-fast
-./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
-./scripts/smoke-test eliza-small
+./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/start-stack
+./scripts/smoke-test-stack
 ```
+
+The default stack is defined in `configs/eliza-stack.toml`.
 
 Start speech services independently:
 
