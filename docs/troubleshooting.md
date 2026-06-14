@@ -154,9 +154,13 @@ For the full voice pipeline, `voice-assistant-local` now expects `whisper-small`
 Try profiles in this order:
 
 ```text
+qwen-smoke-8k
+qwen-smoke-32k
 qwen-shared-128k
 qwen-shared-200k
 qwen-shared-200k-fp8kv
 ```
 
 Stop `voice-llm` before testing `qwen-solo-262k`.
+
+If Qwen hangs during vLLM model load with no API port listening, first test `qwen-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.

@@ -27,6 +27,14 @@ if [[ "${ENABLE_PREFIX_CACHING:-false}" == "true" ]]; then
   cmd+=(--enable-prefix-caching)
 fi
 
+if [[ "${ENFORCE_EAGER:-false}" == "true" ]]; then
+  cmd+=(--enforce-eager)
+fi
+
+if [[ -n "${MAX_CUDAGRAPH_CAPTURE_SIZE:-}" ]]; then
+  cmd+=(--max-cudagraph-capture-size "$MAX_CUDAGRAPH_CAPTURE_SIZE")
+fi
+
 if [[ "${LANGUAGE_MODEL_ONLY:-false}" == "true" ]]; then
   cmd+=(--language-model-only)
 fi
