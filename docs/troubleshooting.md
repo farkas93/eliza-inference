@@ -58,13 +58,15 @@ Run:
 ./scripts/install-vllm
 ```
 
-The service launchers first use `VLLM_BIN` when it resolves to an executable, then fall back to `uv run --project <repo> vllm`. This keeps serving compatible with the uv-managed install used by `./scripts/install-vllm`.
+The service launchers first use `VLLM_BIN` when it resolves to an executable, then try `.venv/bin/vllm`, then fall back to `uv run --project <repo> --no-sync vllm`. This keeps serving compatible with the uv-managed install used by `./scripts/install-vllm` without letting uv resync a working vLLM environment at launch time.
 
 If logs show `exec: vllm: not found`, rerun with the updated launchers or set an explicit binary path in `.env`:
 
 ```bash
 VLLM_BIN="/path/to/vllm"
 ```
+
+If vLLM exits with a `tokenizers`/`transformers` version error, rerun `./scripts/install-vllm` after pulling the latest project lockfile. The base project pins `tokenizers` to the range accepted by the installed Transformers stack.
 
 On DGX Spark, vLLM wheels and torch builds can be architecture-sensitive. Prefer a known-good wheel/container for your current OS image if the direct install fails.
 

@@ -89,7 +89,7 @@ install_vllm() {
 }
 
 verify_python_runtime() {
-  uv run --project "$ROOT_DIR" python - <<'PY'
+  uv run --project "$ROOT_DIR" --no-sync python - <<'PY'
 from __future__ import annotations
 
 import importlib.metadata as md
@@ -155,10 +155,10 @@ PY
 }
 
 verify_vllm_cli() {
-  if uv run --project "$ROOT_DIR" vllm --help >/dev/null 2>&1; then
-    echo "[ok] vllm CLI works through uv run"
+  if uv run --project "$ROOT_DIR" --no-sync vllm --help >/dev/null 2>&1; then
+    echo "[ok] vllm CLI works through uv run --no-sync"
   else
-    echo "[warn] vllm CLI did not run through uv; module-based serving may still work" >&2
+    echo "[warn] vllm CLI did not run through uv --no-sync; module-based serving may still work" >&2
   fi
 }
 
