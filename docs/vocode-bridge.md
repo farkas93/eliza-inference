@@ -2,6 +2,8 @@
 
 `vocode-bridge` is a bounded experiment for validating whether browser-provided audio can be routed through a server-side voice bridge before integrating deeper Vocode internals.
 
+The current bridge does not install or import the `vocode` package. It intentionally validates the WebSocket transport and hosted STT/TTS endpoint contract first. Current Vocode releases constrain `websockets` below 13, so real Vocode `StreamingConversation` integration should be added only after this bridge contract proves useful.
+
 The current implementation intentionally starts with the bridge contract and the hosted STT/TTS endpoints:
 
 ```text

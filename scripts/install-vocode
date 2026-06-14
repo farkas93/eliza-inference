@@ -10,7 +10,10 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<USAGE
 Usage: ./scripts/install-vocode
 
-Installs Vocode bridge dependencies into .venvs/vocode and verifies package imports.
+Installs Vocode bridge transport dependencies into .venvs/vocode and verifies package imports.
+
+Note: this bridge spike does not install the vocode package yet. The current service validates
+browser audio transport through hosted STT/TTS endpoints before deeper Vocode internals are added.
 USAGE
   exit 0
 fi
@@ -24,12 +27,11 @@ ensure_venv "$VOCODE_VENV"
 uv pip install --python "$VOCODE_VENV/bin/python" -U \
   "fastapi>=0.115.0" \
   "uvicorn[standard]>=0.34.0" \
-  "websockets>=13.0" \
-  vocode
+  "websockets>=13.0"
 
 "$VOCODE_VENV/bin/python" - <<'PY'
 import importlib.metadata as md
-for package in ("fastapi", "uvicorn", "websockets", "vocode"):
+for package in ("fastapi", "uvicorn", "websockets"):
     try:
         print(f"{package}={md.version(package)}")
     except md.PackageNotFoundError:
@@ -38,8 +40,9 @@ PY
 
 cat <<'EOF'
 
-Vocode package installed.
+Vocode bridge transport dependencies installed.
 
-The current vocode-bridge service validates the browser audio transport and hosted STT/TTS endpoints first.
+The current vocode-bridge service validates browser audio transport and hosted STT/TTS endpoints first.
+The vocode package is intentionally deferred because current vocode releases constrain websockets <13.
 Deeper Vocode StreamingConversation adapters can be added once this bridge contract is proven.
 EOF

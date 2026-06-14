@@ -44,7 +44,7 @@ Runtime-heavy services use isolated environments so installers cannot prune or b
 .venvs/stt     # FastAPI + faster-whisper
 .venvs/tts     # FastAPI + piper-tts
 .venvs/vllm    # vLLM + Torch
-.venvs/vocode  # FastAPI + websocket bridge + Vocode package
+.venvs/vocode  # FastAPI + websocket bridge transport dependencies
 ```
 
 If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
