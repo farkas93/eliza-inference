@@ -43,7 +43,7 @@ Start speech services independently:
 ./scripts/smoke-test tts
 ```
 
-Start Qwen separately:
+Start `eliza-medium` separately:
 
 ```bash
 ./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
@@ -94,4 +94,4 @@ TTS:       http://dgx-spark:8012/v1/audio/speech
 
 This keeps STT, LLM, and TTS independently reusable by other LAN applications.
 
-See `docs/` for setup, networking, model, and troubleshooting notes.
+See `docs/` for setup, stack, networking, model, and troubleshooting notes.

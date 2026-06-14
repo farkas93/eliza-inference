@@ -32,6 +32,8 @@ The default stack is defined in:
 configs/eliza-stack.toml
 ```
 
+See `docs/eliza-stack.md` for the config format and lifecycle commands.
+
 Start everything enabled in that file:
 
 ```bash
