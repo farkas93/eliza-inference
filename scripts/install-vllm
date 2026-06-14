@@ -82,6 +82,8 @@ install_vllm() {
   if [[ "$INSTALL_VLLM" == "true" ]]; then
     echo "Installing vLLM package into $VLLM_VENV: $VLLM_PACKAGE"
     uv pip install --python "$VLLM_VENV/bin/python" -U "$VLLM_PACKAGE" --torch-backend="$UV_TORCH_BACKEND" "${EXTRA_UV_PIP_ARGS[@]}"
+    echo "Installing vLLM runtime build helpers into $VLLM_VENV"
+    uv pip install --python "$VLLM_VENV/bin/python" -U "ninja>=1.11"
   else
     echo "Skipping vLLM install (--no-install)."
   fi
@@ -91,6 +93,12 @@ verify_native_build_prereqs() {
   if ! command -v gcc >/dev/null 2>&1; then
     echo "Missing required native compiler: gcc" >&2
     echo "Install build prerequisites, for example: sudo apt-get install -y build-essential python3-dev" >&2
+    exit 1
+  fi
+
+  if [[ ! -x "$VLLM_VENV/bin/ninja" ]]; then
+    echo "Missing ninja in vLLM environment: $VLLM_VENV/bin/ninja" >&2
+    echo "Run ./scripts/install-vllm to install FlashInfer/vLLM JIT build helpers." >&2
     exit 1
   fi
 
@@ -136,7 +144,7 @@ print(f"  platform={platform.platform()}")
 print(f"  machine={platform.machine()}")
 
 print("\nPackage versions:")
-for package in ("torch", "vllm", "transformers", "tokenizers", "triton", "xformers"):
+for package in ("torch", "vllm", "transformers", "tokenizers", "triton", "xformers", "ninja"):
     try:
         print(f"  {package}={md.version(package)}")
     except md.PackageNotFoundError:
@@ -170,6 +178,10 @@ except Exception as exc:  # pragma: no cover - install-time diagnostic
 print("\nvLLM import: ok")
 vllm_cli = shutil.which("vllm")
 print(f"vllm CLI on PATH: {vllm_cli or 'not-found-in-shell-path'}")
+ninja_cli = shutil.which("ninja")
+print(f"ninja CLI on PATH: {ninja_cli or 'not-found-in-shell-path'}")
+if not ninja_cli:
+    raise SystemExit("ninja is required for FlashInfer/vLLM JIT compilation and is not on PATH")
 
 try:
     completed = subprocess.run(

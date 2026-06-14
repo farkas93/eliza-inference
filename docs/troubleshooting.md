@@ -78,6 +78,14 @@ sudo apt-get install -y build-essential python3.12-dev
 
 Use the `pythonX.Y-dev` package matching the Python version printed by `./scripts/install-vllm`.
 
+If vLLM exits with `FileNotFoundError: No such file or directory: 'ninja'`, FlashInfer is JIT-compiling a sampler/kernel and cannot find Ninja. Pull the latest repo and rerun:
+
+```bash
+./scripts/install-vllm
+```
+
+The installer now installs `ninja` into `.venvs/vllm`, and service launchers prepend `.venvs/vllm/bin` to `PATH` so FlashInfer subprocesses can find it.
+
 On DGX Spark, vLLM wheels and torch builds can be architecture-sensitive. Prefer a known-good wheel/container for your current OS image if the direct install fails.
 
 If install succeeds but verification fails with `torch CUDA is not available`, the installed Torch stack is not GPU-ready for this machine. Check:

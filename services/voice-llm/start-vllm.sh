@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VLLM_VENV="${VLLM_VENV:-$ROOT_DIR/.venvs/vllm}"
 VLLM_BIN="${VLLM_BIN:-$VLLM_VENV/bin/vllm}"
+export PATH="$VLLM_VENV/bin:$PATH"
 
 vllm_cmd=()
 if command -v "$VLLM_BIN" >/dev/null 2>&1 || [[ -x "$VLLM_BIN" ]]; then
@@ -44,4 +45,4 @@ if [[ "${ENABLE_THINKING:-}" == "false" ]]; then
 fi
 
 echo "Starting voice-llm vLLM: ${cmd[*]}"
-exec "${cmd[@]}"
+exec env -u VLLM_BIN -u VLLM_VENV "${cmd[@]}"
