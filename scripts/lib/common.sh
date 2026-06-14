@@ -98,7 +98,7 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      qwen-coder) PROFILE="qwen-shared-200k" ;;
+      qwen-coder) PROFILE="qwen-llamacpp-32k" ;;
       voice-llm) PROFILE="voice-gemma4-e4b-default" ;;
       stt) PROFILE="stt-faster-whisper-small-cpu" ;;
       tts) PROFILE="tts-piper-lessac" ;;

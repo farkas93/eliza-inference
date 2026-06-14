@@ -63,6 +63,12 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 ./scripts/benchmark-context qwen-coder --tokens 200000
 ```
 
+vLLM profiles are experimental on GB10 in this repo. To remove the local vLLM environment and return to the llama.cpp-first path:
+
+```bash
+./scripts/cleanup-vllm
+```
+
 Test the Vocode bridge transport spike:
 
 ```bash

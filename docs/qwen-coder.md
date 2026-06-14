@@ -29,6 +29,12 @@ Start with `qwen-llamacpp-32k`. If that works, add/test larger llama.cpp context
 
 If Qwen/Gemma vLLM profiles hang during model load, treat vLLM as experimental on GB10. The current practical path is llama.cpp GGUF.
 
+To remove local vLLM state and stop stale Qwen vLLM sessions:
+
+```bash
+./scripts/cleanup-vllm
+```
+
 ## Benchmark
 
 ```bash

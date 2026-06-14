@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+DRY_RUN="false"
+PURGE_CACHE="false"
+PURGE_LOGS="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    --purge-cache)
+      PURGE_CACHE="true"
+      shift
+      ;;
+    --purge-logs)
+      PURGE_LOGS="true"
+      shift
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/cleanup-vllm [--dry-run] [--purge-cache] [--purge-logs]
+
+Stops stale vLLM sessions and removes the isolated vLLM environment.
+
+Default cleanup:
+  - kill eliza-qwen-coder tmux session if present
+  - remove .venvs/vllm
+
+Optional cleanup:
+  --purge-cache  Remove local vLLM/FlashInfer/Torch/Triton caches.
+  --purge-logs   Move qwen/voice LLM logs aside with a timestamp.
+  --dry-run      Print actions without executing them.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+run() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    printf '[dry-run] %q ' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+remove_path() {
+  local path="$1"
+  if [[ -e "$path" ]]; then
+    run rm -rf "$path"
+  else
+    echo "[skip] not found: $path"
+  fi
+}
+
+move_log() {
+  local path="$1"
+  local timestamp="$2"
+  if [[ -f "$path" ]]; then
+    run mv "$path" "$path.$timestamp.vllm-cleanup"
+  else
+    echo "[skip] log not found: $path"
+  fi
+}
+
+echo "Cleaning vLLM runtime state in $ROOT_DIR"
+
+if command -v tmux >/dev/null 2>&1 && tmux has-session -t eliza-qwen-coder >/dev/null 2>&1; then
+  run tmux kill-session -t eliza-qwen-coder
+else
+  echo "[skip] no tmux session: eliza-qwen-coder"
+fi
+
+remove_path "$VLLM_VENV"
+
+if [[ "$PURGE_CACHE" == "true" ]]; then
+  remove_path "$HOME/.cache/vllm"
+  remove_path "$HOME/.cache/flashinfer"
+  remove_path "$HOME/.cache/triton"
+  remove_path "$HOME/.cache/torch/inductor"
+fi
+
+if [[ "$PURGE_LOGS" == "true" ]]; then
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  move_log "$LOG_DIR/qwen-coder.log" "$timestamp"
+  move_log "$LOG_DIR/voice-llm.log" "$timestamp"
+fi
+
+cat <<EOF
+
+
+Recommended stable path now:
+  ./scripts/install-llamacpp
+  ./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
+  ./scripts/start qwen-coder --profile qwen-llamacpp-32k
+  ./scripts/smoke-test qwen-coder --profile qwen-llamacpp-32k
+EOF

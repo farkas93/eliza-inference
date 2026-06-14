@@ -174,3 +174,11 @@ qwen-shared-200k-fp8kv
 Stop `voice-llm` before testing `qwen-solo-262k`.
 
 If Qwen hangs during vLLM model load with no API port listening, first test `qwen-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
+
+If vLLM remains unreliable, clean it up and use the llama.cpp Qwen profile:
+
+```bash
+./scripts/cleanup-vllm
+./scripts/download-models qwen-coder --profile qwen-llamacpp-32k
+./scripts/start qwen-coder --profile qwen-llamacpp-32k
+```

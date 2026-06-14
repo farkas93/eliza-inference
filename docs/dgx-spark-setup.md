@@ -62,6 +62,12 @@ If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAM
 
 `install-vllm` installs vLLM into `.venvs/vllm`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU. vLLM is currently experimental on GB10 in this repo; llama.cpp is the default runtime path.
 
+To clean up vLLM attempts and return to the llama.cpp-first setup:
+
+```bash
+./scripts/cleanup-vllm
+```
+
 Useful options:
 
 ```bash
