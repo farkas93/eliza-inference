@@ -40,7 +40,12 @@ model="$(service_model_name)"
 timestamp="$(date +%Y%m%d-%H%M%S)"
 output="$ROOT_DIR/benchmarks/results/${SERVICE}-${PROFILE:-default}-${TOKENS}-${timestamp}.json"
 
-uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/openai/long_context_test.py" \
+if [[ ! -x "$BASE_VENV/bin/python" ]]; then
+  echo "Base venv missing. Run ./scripts/install first." >&2
+  exit 1
+fi
+
+"$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/long_context_test.py" \
   --base-url "$base_url" \
   --model "$model" \
   --tokens "$TOKENS" \

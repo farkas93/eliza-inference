@@ -25,6 +25,7 @@ def health() -> dict[str, str]:
         "status": "ok",
         "backend": os.environ.get("BACKEND", "piper"),
         "model": os.environ.get("MODEL_NAME", "local-tts"),
+        "piper_bin": os.environ.get("PIPER_BIN", "piper"),
     }
 
 

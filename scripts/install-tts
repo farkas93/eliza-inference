@@ -83,12 +83,14 @@ if [[ "${BACKEND:-piper}" != "piper" ]]; then
 fi
 
 install_piper() {
-  echo "Syncing base project dependencies"
-  uv sync --project "$ROOT_DIR"
+  ensure_venv "$TTS_VENV"
 
   if [[ "$INSTALL_BACKEND" == "true" ]]; then
-    echo "Installing piper-tts into the project environment"
-    uv pip install --project "$ROOT_DIR" -U piper-tts
+    echo "Installing Piper TTS service dependencies into $TTS_VENV"
+    uv pip install --python "$TTS_VENV/bin/python" -U \
+      "fastapi>=0.115.0" \
+      "uvicorn[standard]>=0.34.0" \
+      "piper-tts>=1.4.2"
   else
     echo "Skipping piper-tts install (--no-install)."
   fi
@@ -101,7 +103,7 @@ resolve_piper_bin() {
     candidates+=("$PIPER_BIN")
   fi
 
-  candidates+=("$ROOT_DIR/.venv/bin/piper")
+  candidates+=("$TTS_VENV/bin/piper")
 
   local candidate
   for candidate in "${candidates[@]}"; do
@@ -110,11 +112,6 @@ resolve_piper_bin() {
       return 0
     fi
   done
-
-  if uv run --project "$ROOT_DIR" piper --help >/dev/null 2>&1; then
-    echo "uv-run:piper"
-    return 0
-  fi
 
   if command -v piper >/dev/null 2>&1; then
     command -v piper
@@ -128,11 +125,7 @@ run_piper() {
   local piper_bin="$1"
   shift
 
-  if [[ "$piper_bin" == "uv-run:piper" ]]; then
-    uv run --project "$ROOT_DIR" piper "$@"
-  else
-    "$piper_bin" "$@"
-  fi
+  "$piper_bin" "$@"
 }
 
 download_voice() {
@@ -206,7 +199,7 @@ cat <<EOF
 Piper TTS installation verification completed.
 
 Add this to .env if PIPER_BIN is not already set:
-PIPER_BIN="${piper_bin#uv-run:}"
+PIPER_BIN="$piper_bin"
 
 Next test:
   ./scripts/start tts --profile $PROFILE

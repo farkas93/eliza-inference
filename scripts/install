@@ -52,6 +52,11 @@ fi
 install_git_lfs
 
 mkdir -p "$MODEL_HOME" "$HF_HOME" "$LLAMA_CACHE" "$LOG_DIR"
-uv sync --project "$ROOT_DIR"
+mkdir -p "$ELIZA_VENV_DIR"
+ensure_venv "$BASE_VENV"
+uv pip install --python "$BASE_VENV/bin/python" -U \
+  "huggingface-hub>=0.32.0" \
+  "openai>=1.82.0" \
+  "websockets>=13.0"
 
 echo "Base Python environment ready."

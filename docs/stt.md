@@ -33,7 +33,7 @@ The default STT profile is CPU `int8` because the PyPI CTranslate2 wheel may be 
 ## Commands
 
 ```bash
-./scripts/download-models stt --profile stt-faster-whisper-small-cpu
+./scripts/install-stt --profile stt-faster-whisper-small-cpu
 ./scripts/start stt --profile stt-faster-whisper-small-cpu
 ./scripts/smoke-test stt
 ```

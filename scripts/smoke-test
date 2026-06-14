@@ -8,11 +8,16 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 parse_service_profile "$@"
 
+if [[ ! -x "$BASE_VENV/bin/python" ]]; then
+  echo "Base venv missing. Run ./scripts/install first." >&2
+  exit 1
+fi
+
 case "$SERVICE" in
   stt)
     base_url="$(service_base_url)"
     model="$(service_model_name)"
-    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/stt_test.py" \
+    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/stt_test.py" \
       --base-url "$base_url" \
       --model "$model"
     ;;
@@ -20,14 +25,14 @@ case "$SERVICE" in
     base_url="$(service_base_url)"
     model="$(service_model_name)"
     source_profile
-    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/tts_test.py" \
+    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/tts_test.py" \
       --base-url "$base_url" \
       --model "$model" \
       --voice "${VOICE:-default}"
     ;;
   voice-assistant)
     source_profile
-    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/pipeline_test.py" \
+    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/pipeline_test.py" \
       --stt-base-url "${STT_BASE_URL:?STT_BASE_URL is required}" \
       --stt-model "${STT_MODEL:?STT_MODEL is required}" \
       --llm-base-url "${VOICE_LLM_BASE_URL:?VOICE_LLM_BASE_URL is required}" \
@@ -38,13 +43,13 @@ case "$SERVICE" in
     ;;
   vocode-bridge)
     source_profile
-    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/audio/vocode_bridge_test.py" \
+    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/vocode_bridge_test.py" \
       --url "ws://127.0.0.1:${PORT:-8021}/ws"
     ;;
   *)
     base_url="$(service_base_url)"
     model="$(service_model_name)"
-    uv run --project "$ROOT_DIR" python "$ROOT_DIR/clients/openai/smoke_test.py" \
+    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/smoke_test.py" \
       --base-url "$base_url" \
       --model "$model"
     ;;

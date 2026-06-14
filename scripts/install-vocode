@@ -6,20 +6,34 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<USAGE
+Usage: ./scripts/install-vocode
+
+Installs Vocode bridge dependencies into .venvs/vocode and verifies package imports.
+USAGE
+  exit 0
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required. Run ./scripts/install first." >&2
   exit 1
 fi
 
-uv sync --project "$ROOT_DIR"
-uv pip install --project "$ROOT_DIR" -U vocode
+ensure_venv "$VOCODE_VENV"
+uv pip install --python "$VOCODE_VENV/bin/python" -U \
+  "fastapi>=0.115.0" \
+  "uvicorn[standard]>=0.34.0" \
+  "websockets>=13.0" \
+  vocode
 
-uv run --project "$ROOT_DIR" python - <<'PY'
+"$VOCODE_VENV/bin/python" - <<'PY'
 import importlib.metadata as md
-try:
-    print(f"vocode={md.version('vocode')}")
-except md.PackageNotFoundError:
-    raise SystemExit("vocode did not install")
+for package in ("fastapi", "uvicorn", "websockets", "vocode"):
+    try:
+        print(f"{package}={md.version(package)}")
+    except md.PackageNotFoundError:
+        raise SystemExit(f"{package} did not install")
 PY
 
 cat <<'EOF'

@@ -32,7 +32,7 @@ curl http://127.0.0.1:8012/v1/audio/speech \
 ./scripts/smoke-test tts
 ```
 
-`install-tts` installs `piper-tts` into the project environment, downloads the selected voice, and verifies synthesis by writing:
+`install-tts` installs `piper-tts` into `.venvs/tts`, downloads the selected voice, and verifies synthesis by writing:
 
 ```text
 tmp/piper-install-test.wav

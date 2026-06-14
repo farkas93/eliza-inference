@@ -58,7 +58,7 @@ Run:
 ./scripts/install-vllm
 ```
 
-The service launchers first use `VLLM_BIN` when it resolves to an executable, then try `.venv/bin/vllm`, then fall back to `uv run --project <repo> --no-sync vllm`. This keeps serving compatible with the uv-managed install used by `./scripts/install-vllm` without letting uv resync a working vLLM environment at launch time.
+The vLLM installer creates `.venvs/vllm`, and service launchers default to `.venvs/vllm/bin/vllm`. Set `VLLM_BIN` in `.env` only if you want to override that path.
 
 If logs show `exec: vllm: not found`, rerun with the updated launchers or set an explicit binary path in `.env`:
 
@@ -66,7 +66,17 @@ If logs show `exec: vllm: not found`, rerun with the updated launchers or set an
 VLLM_BIN="/path/to/vllm"
 ```
 
-If vLLM exits with a `tokenizers`/`transformers` version error, rerun `./scripts/install-vllm` after pulling the latest project lockfile. The base project pins `tokenizers` to the range accepted by the installed Transformers stack.
+If vLLM exits with a `tokenizers`/`transformers` version error, rerun `./scripts/install-vllm` after pulling the latest installer changes. This only affects `.venvs/vllm`.
+
+If vLLM exits while inspecting a model architecture with `fatal error: Python.h: No such file or directory`, Triton is compiling a runtime CUDA helper and Python development headers are missing. Install native build prerequisites, then rerun verification:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential python3.12-dev
+./scripts/install-vllm --no-install
+```
+
+Use the `pythonX.Y-dev` package matching the Python version printed by `./scripts/install-vllm`.
 
 On DGX Spark, vLLM wheels and torch builds can be architecture-sensitive. Prefer a known-good wheel/container for your current OS image if the direct install fails.
 
@@ -74,7 +84,7 @@ If install succeeds but verification fails with `torch CUDA is not available`, t
 
 ```bash
 nvidia-smi
-uv run --project . python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+.venvs/vllm/bin/python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
 ```
 
 To rerun verification without reinstalling packages:
@@ -101,7 +111,7 @@ Install and verify Piper with:
 ./scripts/install-tts --backend piper --profile tts-piper-lessac
 ```
 
-If the installer succeeds but the TTS service fails, make sure `.env` contains the printed `PIPER_BIN` value, then restart the service:
+If the installer succeeds but the TTS service fails, make sure `.venvs/tts/bin/piper` exists or set `PIPER_BIN` in `.env`, then restart the service:
 
 ```bash
 ./scripts/restart tts --profile tts-piper-lessac

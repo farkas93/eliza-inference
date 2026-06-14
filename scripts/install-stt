@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+PROFILE="stt-faster-whisper-small-cpu"
+INSTALL_BACKEND="true"
+DOWNLOAD_MODEL="true"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="${2:-}"
+      shift 2
+      ;;
+    --no-install)
+      INSTALL_BACKEND="false"
+      shift
+      ;;
+    --no-download)
+      DOWNLOAD_MODEL="false"
+      shift
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/install-stt [options]
+
+Installs and verifies the STT service environment.
+
+Options:
+  --profile PROFILE   STT profile to verify. Default: stt-faster-whisper-small-cpu
+  --no-install        Skip package installation and only verify.
+  --no-download       Skip model download and only verify existing files.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required. Run ./scripts/install first." >&2
+  exit 1
+fi
+
+PROFILE_PATH="$ROOT_DIR/configs/profiles/$PROFILE.env"
+if [[ ! -f "$PROFILE_PATH" ]]; then
+  echo "Profile not found: $PROFILE_PATH" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$PROFILE_PATH"
+set +a
+
+if [[ "${SERVICE_NAME:-}" != "stt" ]]; then
+  echo "Profile is not an STT profile: $PROFILE" >&2
+  exit 1
+fi
+
+ensure_venv "$STT_VENV"
+
+if [[ "$INSTALL_BACKEND" == "true" ]]; then
+  echo "Installing STT service dependencies into $STT_VENV"
+  uv pip install --python "$STT_VENV/bin/python" -U \
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.34.0" \
+    "python-multipart>=0.0.20" \
+    "faster-whisper>=1.1.1"
+else
+  echo "Skipping STT dependency install (--no-install)."
+fi
+
+if [[ "$DOWNLOAD_MODEL" == "true" ]]; then
+  "$ROOT_DIR/scripts/download-models" stt --profile "$PROFILE"
+else
+  echo "Skipping STT model download (--no-download)."
+fi
+
+"$STT_VENV/bin/python" - <<'PY'
+import importlib.metadata as md
+for package in ("fastapi", "uvicorn", "faster-whisper", "ctranslate2"):
+    try:
+        print(f"{package}={md.version(package)}")
+    except md.PackageNotFoundError:
+        raise SystemExit(f"{package} is not installed")
+PY
+
+if [[ -n "${MODEL_DIR:-}" && ! -d "$MODEL_DIR" ]]; then
+  echo "STT model directory not found: $MODEL_DIR" >&2
+  exit 1
+fi
+
+echo "STT installation verification completed."
+echo "Next test: ./scripts/start stt --profile $PROFILE && ./scripts/smoke-test stt --profile $PROFILE"

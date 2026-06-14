@@ -28,12 +28,26 @@ The doctor checks common tools, NVIDIA visibility, default ports, model director
 
 ```bash
 ./scripts/install
-./scripts/install-vllm
 ./scripts/install-llamacpp
+./scripts/install-stt --profile stt-faster-whisper-small-cpu
 ./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-vocode
+./scripts/install-vllm
 ```
 
-`scripts/install` bootstraps `uv` if it is missing and installs `git-lfs` through `apt` when `sudo` is available. If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
+`scripts/install` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
+
+Runtime-heavy services use isolated environments so installers cannot prune or break each other:
+
+```text
+.venvs/base    # CLI helpers, model downloads, smoke-test clients
+.venvs/stt     # FastAPI + faster-whisper
+.venvs/tts     # FastAPI + piper-tts
+.venvs/vllm    # vLLM + Torch
+.venvs/vocode  # FastAPI + websocket bridge + Vocode package
+```
+
+If `uv` is installed but not visible in the current shell, open a new shell or add `~/.local/bin` to `PATH` and rerun the command.
 
 `install-llamacpp` builds a recent CUDA-enabled llama.cpp checkout under `~/src/llama.cpp` when `llama-server` is not already available. It installs apt build prerequisites when `sudo` is available, configures CMake with `GGML_CUDA=ON` and `LLAMA_CURL=ON`, and builds `llama-server`, `llama-cli`, and `llama-mtmd-cli`.
 
@@ -47,7 +61,7 @@ Useful options:
 
 If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAMA_SERVER_BIN` line to `.env`.
 
-`install-vllm` installs vLLM with `uv`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU.
+`install-vllm` installs vLLM into `.venvs/vllm`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU.
 
 Useful options:
 
@@ -58,7 +72,9 @@ Useful options:
 ./scripts/install-vllm --torch-backend auto
 ```
 
-`install-tts` installs and verifies the selected TTS backend. The default supported backend is Piper through the `piper-tts` Python package. It downloads the selected voice profile, verifies the voice files, synthesizes `tmp/piper-install-test.wav`, and prints the `PIPER_BIN` setting to add to `.env` if needed.
+`install-stt` installs FastAPI and faster-whisper into `.venvs/stt`, downloads the selected profile model, and verifies imports.
+
+`install-tts` installs and verifies the selected TTS backend in `.venvs/tts`. The default supported backend is Piper through the `piper-tts` Python package. It downloads the selected voice profile, verifies the voice files, synthesizes `tmp/piper-install-test.wav`, and prints the `PIPER_BIN` setting to add to `.env` if needed.
 
 Useful options:
 

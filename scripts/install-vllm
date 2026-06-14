@@ -77,19 +77,50 @@ show_host_gpu() {
 }
 
 install_vllm() {
-  echo "Syncing base project dependencies"
-  uv sync --project "$ROOT_DIR"
+  ensure_venv "$VLLM_VENV"
 
   if [[ "$INSTALL_VLLM" == "true" ]]; then
-    echo "Installing vLLM package: $VLLM_PACKAGE"
-    uv pip install --project "$ROOT_DIR" -U "$VLLM_PACKAGE" --torch-backend="$UV_TORCH_BACKEND" "${EXTRA_UV_PIP_ARGS[@]}"
+    echo "Installing vLLM package into $VLLM_VENV: $VLLM_PACKAGE"
+    uv pip install --python "$VLLM_VENV/bin/python" -U "$VLLM_PACKAGE" --torch-backend="$UV_TORCH_BACKEND" "${EXTRA_UV_PIP_ARGS[@]}"
   else
     echo "Skipping vLLM install (--no-install)."
   fi
 }
 
+verify_native_build_prereqs() {
+  if ! command -v gcc >/dev/null 2>&1; then
+    echo "Missing required native compiler: gcc" >&2
+    echo "Install build prerequisites, for example: sudo apt-get install -y build-essential python3-dev" >&2
+    exit 1
+  fi
+
+  "$VLLM_VENV/bin/python" - <<'PY'
+from __future__ import annotations
+
+import os
+import sys
+import sysconfig
+
+include_dir = sysconfig.get_path("include")
+python_h = os.path.join(include_dir or "", "Python.h")
+package = f"python{sys.version_info.major}.{sys.version_info.minor}-dev"
+
+print("Native build prerequisites:")
+print(f"  include_dir={include_dir}")
+print(f"  Python.h={python_h}")
+
+if not include_dir or not os.path.exists(python_h):
+    raise SystemExit(
+        "Missing Python development headers required by Triton/vLLM runtime compilation.\n"
+        f"Install them with: sudo apt-get install -y build-essential {package}"
+    )
+
+print("  Python.h=present")
+PY
+}
+
 verify_python_runtime() {
-  uv run --project "$ROOT_DIR" --no-sync python - <<'PY'
+  "$VLLM_VENV/bin/python" - <<'PY'
 from __future__ import annotations
 
 import importlib.metadata as md
@@ -155,16 +186,17 @@ PY
 }
 
 verify_vllm_cli() {
-  if uv run --project "$ROOT_DIR" --no-sync vllm --help >/dev/null 2>&1; then
-    echo "[ok] vllm CLI works through uv run --no-sync"
+  if "$VLLM_VENV/bin/vllm" --help >/dev/null 2>&1; then
+    echo "[ok] vllm CLI works at $VLLM_VENV/bin/vllm"
   else
-    echo "[warn] vllm CLI did not run through uv --no-sync; module-based serving may still work" >&2
+    echo "[warn] vllm CLI did not run from $VLLM_VENV; module-based serving may still work" >&2
   fi
 }
 
 require_uv
 show_host_gpu
 install_vllm
+verify_native_build_prereqs
 verify_python_runtime
 verify_vllm_cli
 

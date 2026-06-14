@@ -14,16 +14,21 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ ! -x "$BASE_VENV/bin/python" ]]; then
+  echo "Base venv missing. Run ./scripts/install first." >&2
+  exit 1
+fi
+
 mkdir -p "$MODEL_HOME" "$HF_HOME"
 
 hf_download() {
-  if uv run --project "$ROOT_DIR" hf --help >/dev/null 2>&1; then
-    uv run --project "$ROOT_DIR" hf download "$@"
+  if "$BASE_VENV/bin/hf" --help >/dev/null 2>&1; then
+    "$BASE_VENV/bin/hf" download "$@"
     return 0
   fi
 
-  if uv run --project "$ROOT_DIR" huggingface-cli --help >/dev/null 2>&1; then
-    uv run --project "$ROOT_DIR" huggingface-cli download "$@"
+  if "$BASE_VENV/bin/huggingface-cli" --help >/dev/null 2>&1; then
+    "$BASE_VENV/bin/huggingface-cli" download "$@"
     return 0
   fi
 

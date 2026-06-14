@@ -19,7 +19,6 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 ```bash
 ./scripts/doctor
 ./scripts/install
-./scripts/install-vllm
 ./scripts/install-llamacpp
 ./scripts/download-models voice-llm --profile voice-gemma4-e4b-default
 ./scripts/start voice-llm --profile voice-gemma4-e4b-default
@@ -29,7 +28,7 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 Start speech services independently:
 
 ```bash
-./scripts/download-models stt --profile stt-faster-whisper-small-cpu
+./scripts/install-stt --profile stt-faster-whisper-small-cpu
 ./scripts/start stt --profile stt-faster-whisper-small-cpu
 ./scripts/smoke-test stt
 
@@ -41,6 +40,7 @@ Start speech services independently:
 Start Qwen separately:
 
 ```bash
+./scripts/install-vllm
 ./scripts/download-models qwen-coder --profile qwen-shared-200k
 ./scripts/start qwen-coder --profile qwen-shared-200k
 ./scripts/smoke-test qwen-coder
