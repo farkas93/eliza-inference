@@ -58,6 +58,14 @@ Run:
 ./scripts/install-vllm
 ```
 
+The service launchers first use `VLLM_BIN` when it resolves to an executable, then fall back to `uv run --project <repo> vllm`. This keeps serving compatible with the uv-managed install used by `./scripts/install-vllm`.
+
+If logs show `exec: vllm: not found`, rerun with the updated launchers or set an explicit binary path in `.env`:
+
+```bash
+VLLM_BIN="/path/to/vllm"
+```
+
 On DGX Spark, vLLM wheels and torch builds can be architecture-sensitive. Prefer a known-good wheel/container for your current OS image if the direct install fails.
 
 If install succeeds but verification fails with `torch CUDA is not available`, the installed Torch stack is not GPU-ready for this machine. Check:

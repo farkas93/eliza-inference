@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VLLM_BIN="${VLLM_BIN:-vllm}"
 
+vllm_cmd=()
+if command -v "$VLLM_BIN" >/dev/null 2>&1 || [[ -x "$VLLM_BIN" ]]; then
+  vllm_cmd=("$VLLM_BIN")
+elif command -v uv >/dev/null 2>&1; then
+  vllm_cmd=(uv run --project "$ROOT_DIR" vllm)
+else
+  echo "vLLM CLI not found and uv is unavailable. Run ./scripts/install-vllm or set VLLM_BIN in .env." >&2
+  exit 1
+fi
+
 cmd=(
-  "$VLLM_BIN" serve "${MODEL_ID:?MODEL_ID is required}"
+  "${vllm_cmd[@]}" serve "${MODEL_ID:?MODEL_ID is required}"
   --host "${HOST:-0.0.0.0}"
   --port "${PORT:-8002}"
   --max-model-len "${MAX_MODEL_LEN:-8192}"
