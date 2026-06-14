@@ -9,6 +9,9 @@ The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q
 | Profile | Runtime | Context | Use |
 | --- | --- | ---: | --- |
 | `eliza-medium-qwen-llamacpp-32k` | llama.cpp | `32768` | Default compatibility profile |
+| `eliza-medium-qwen-llamacpp-128k` | llama.cpp | `128000` | Larger context test using the default UD-Q4_K_XL GGUF |
+| `eliza-medium-qwen-q6-llamacpp-32k` | llama.cpp | `32768` | Higher precision Q6 quality comparison |
+| `eliza-medium-qwen-q8-llamacpp-32k` | llama.cpp | `32768` | Highest precision GGUF quality comparison |
 | `eliza-medium-vllm-smoke-tinyllama` | vLLM | `2048` | Experimental vLLM runtime sanity test |
 | `eliza-medium-qwen-vllm-smoke-8k` | vLLM | `8192` | Experimental vLLM/Qwen compatibility test |
 | `eliza-medium-qwen-vllm-smoke-32k` | vLLM | `32768` | Experimental vLLM/Qwen step-up test |
@@ -26,6 +29,27 @@ The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q
 ```
 
 Start with `eliza-medium-qwen-llamacpp-32k`. If that works, add/test larger llama.cpp context profiles before revisiting vLLM.
+
+Suggested llama.cpp test ladder:
+
+```bash
+./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/smoke-test eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+
+./scripts/restart eliza-medium --profile eliza-medium-qwen-llamacpp-128k
+./scripts/smoke-test eliza-medium --profile eliza-medium-qwen-llamacpp-128k
+./scripts/benchmark-context eliza-medium --profile eliza-medium-qwen-llamacpp-128k --tokens 32000
+./scripts/benchmark-context eliza-medium --profile eliza-medium-qwen-llamacpp-128k --tokens 128000
+```
+
+For higher precision, download and test Q6/Q8 at 32K before trying large contexts:
+
+```bash
+./scripts/download-models eliza-medium --profile eliza-medium-qwen-q6-llamacpp-32k
+./scripts/restart eliza-medium --profile eliza-medium-qwen-q6-llamacpp-32k
+./scripts/smoke-test eliza-medium --profile eliza-medium-qwen-q6-llamacpp-32k
+```
 
 To remove local vLLM state and stop stale vLLM sessions:
 

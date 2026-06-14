@@ -163,6 +163,9 @@ Try profiles in this order:
 
 ```text
 eliza-medium-qwen-llamacpp-32k
+eliza-medium-qwen-llamacpp-128k
+eliza-medium-qwen-q6-llamacpp-32k
+eliza-medium-qwen-q8-llamacpp-32k
 eliza-medium-vllm-smoke-tinyllama
 eliza-medium-qwen-vllm-smoke-8k
 eliza-medium-qwen-vllm-smoke-32k
