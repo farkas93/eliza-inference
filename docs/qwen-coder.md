@@ -2,6 +2,8 @@
 
 `qwen-coder` is llama.cpp-first on DGX Spark. vLLM profiles remain available for experimental GB10 work, but the operational default is GGUF via llama.cpp.
 
+The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q4_K_XL.gguf` file.
+
 ## Profiles
 
 | Profile | Runtime | Context | Use |
