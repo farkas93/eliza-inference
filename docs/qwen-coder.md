@@ -6,6 +6,7 @@
 
 | Profile | Context | KV Cache | Memory Utilization | Use |
 | --- | ---: | --- | ---: | --- |
+| `vllm-smoke-tinyllama` | `2048` | auto | `0.20` | vLLM runtime sanity test with a simple model |
 | `qwen-smoke-8k` | `8192` | auto | `0.50` | First vLLM/Qwen compatibility test |
 | `qwen-smoke-32k` | `32768` | auto | `0.50` | Second compatibility step |
 | `qwen-shared-128k` | `128000` | auto | `0.50` | Safer shared baseline |
@@ -24,6 +25,8 @@
 ```
 
 Start with `qwen-smoke-8k` before testing 128K/200K. The smoke profiles disable prefix caching and use eager mode to avoid Qwen hybrid/Mamba prefix-cache and CUDA graph complexity during first validation.
+
+If Qwen/Gemma vLLM profiles hang during model load, first test `vllm-smoke-tinyllama`. If TinyLlama also hangs, the issue is likely the vLLM/Torch/GB10 runtime rather than a Qwen-specific configuration.
 
 ## Benchmark
 

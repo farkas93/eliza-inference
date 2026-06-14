@@ -154,6 +154,7 @@ For the full voice pipeline, `voice-assistant-local` now expects `whisper-small`
 Try profiles in this order:
 
 ```text
+vllm-smoke-tinyllama
 qwen-smoke-8k
 qwen-smoke-32k
 qwen-shared-128k
