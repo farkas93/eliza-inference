@@ -20,6 +20,17 @@ Benchmark profiles instead of assuming a single best configuration.
 
 Compare elapsed time, success/failure, memory from `./scripts/benchmark-memory`, and qualitative output.
 
+## Streaming
+
+Inspect raw streaming chunks and estimate output throughput:
+
+```bash
+./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen-llamacpp-32k --show-raw
+./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
+```
+
+The stream benchmark records first-event latency, first-content latency, estimated output tokens/sec, and whether the endpoint sent a dedicated reasoning channel or `<think>` tags in normal content.
+
 ## Voice
 
 ```bash
