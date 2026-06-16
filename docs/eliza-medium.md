@@ -10,6 +10,7 @@ The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q
 | --- | --- | ---: | --- |
 | `eliza-medium-qwen-llamacpp-32k` | llama.cpp | `32768` | Default compatibility profile |
 | `eliza-medium-qwen-llamacpp-128k` | llama.cpp | `128000` | Larger context test using the default UD-Q4_K_XL GGUF |
+| `eliza-medium-gemma4-26b-a4b-llamacpp-256k-experimental` | llama.cpp | `256000` | Experimental Gemma 4 26B A4B long-context profile |
 | `eliza-medium-qwen-q6-llamacpp-32k` | llama.cpp | `32768` | Higher precision Q6 quality comparison |
 | `eliza-medium-qwen-q8-llamacpp-32k` | llama.cpp | `32768` | Highest precision GGUF quality comparison |
 | `eliza-medium-vllm-smoke-tinyllama` | vLLM | `2048` | Experimental vLLM runtime sanity test |
@@ -18,6 +19,7 @@ The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q
 | `eliza-medium-qwen-vllm-128k-experimental` | vLLM | `128000` | Experimental vLLM long-context baseline |
 | `eliza-medium-qwen-vllm-200k-experimental` | vLLM | `200000` | Experimental vLLM target |
 | `eliza-medium-qwen-vllm-200k-fp8kv-experimental` | vLLM | `200000` | Experimental vLLM KV comparison |
+| `eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental` | llama.cpp | `200000` | Experimental Qwen3.6 35B A3B profile |
 | `eliza-medium-qwen-vllm-262k-experimental` | vLLM | `262144` | Experimental full native context |
 
 ## Start

@@ -172,6 +172,7 @@ eliza-medium-qwen-vllm-smoke-32k
 eliza-medium-qwen-vllm-128k-experimental
 eliza-medium-qwen-vllm-200k-experimental
 eliza-medium-qwen-vllm-200k-fp8kv-experimental
+eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental
 ```
 
 Stop `eliza-small` before testing larger `eliza-medium` profiles.
