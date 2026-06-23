@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
-PROFILE="stt-faster-whisper-small-cpu"
+PROFILE="stt/faster-whisper-small-cpu"
 INSTALL_BACKEND="true"
 DOWNLOAD_MODEL="true"
 
@@ -31,7 +31,7 @@ Usage: ./scripts/install-stt [options]
 Installs and verifies the STT service environment.
 
 Options:
-  --profile PROFILE   STT profile to verify. Default: stt-faster-whisper-small-cpu
+  --profile PROFILE   STT profile to verify. Default: stt/faster-whisper-small-cpu
   --no-install        Skip package installation and only verify.
   --no-download       Skip model download and only verify existing files.
 USAGE
@@ -49,9 +49,9 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-PROFILE_PATH="$ROOT_DIR/configs/profiles/$PROFILE.env"
-if [[ ! -f "$PROFILE_PATH" ]]; then
-  echo "Profile not found: $PROFILE_PATH" >&2
+PROFILE_PATH="$(resolve_profile_path "$PROFILE" || true)"
+if [[ -z "$PROFILE_PATH" ]]; then
+  echo "Profile not found under configs/profiles: $PROFILE" >&2
   exit 1
 fi
 

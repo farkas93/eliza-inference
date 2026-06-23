@@ -2,10 +2,10 @@
 
 Low-latency model endpoint for voice turns, with pluggable llama.cpp and experimental vLLM backends.
 
-Default profile: `eliza-small-gemma4-e2b-fast`.
+Default profile: `small/gemma4-e2b-fast`.
 
 ```bash
-./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
+./scripts/start eliza-small --profile small/gemma4-e2b-fast
 ./scripts/smoke-test eliza-small
 ```
 

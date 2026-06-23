@@ -7,7 +7,7 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
 BACKEND="piper"
-PROFILE="tts-piper-lessac"
+PROFILE="tts/piper-lessac"
 INSTALL_BACKEND="true"
 DOWNLOAD_VOICE="true"
 
@@ -37,7 +37,7 @@ Installs and verifies a TTS backend. Defaults to Piper.
 
 Options:
   --backend BACKEND   Backend to install. Currently supported: piper
-  --profile PROFILE   TTS profile to verify. Default: tts-piper-lessac
+  --profile PROFILE   TTS profile to verify. Default: tts/piper-lessac
   --no-install        Skip backend package installation and only verify.
   --no-download       Skip voice model download and only verify existing files.
 USAGE
@@ -61,9 +61,9 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-PROFILE_PATH="$ROOT_DIR/configs/profiles/$PROFILE.env"
-if [[ ! -f "$PROFILE_PATH" ]]; then
-  echo "Profile not found: $PROFILE_PATH" >&2
+PROFILE_PATH="$(resolve_profile_path "$PROFILE" || true)"
+if [[ -z "$PROFILE_PATH" ]]; then
+  echo "Profile not found under configs/profiles: $PROFILE" >&2
   exit 1
 fi
 

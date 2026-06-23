@@ -45,10 +45,10 @@ For the Vocode experiment, see `docs/vocode-bridge.md`. The first bridge milesto
 Before wiring live microphone/speaker Vocode adapters, test the same service boundaries over HTTP:
 
 ```bash
-./scripts/start stt --profile stt-faster-whisper-small-cpu
-./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
-./scripts/start tts --profile tts-piper-lessac
-./scripts/smoke-test voice-assistant --profile voice-assistant-local
+./scripts/start stt --profile stt/faster-whisper-small-cpu
+./scripts/start eliza-small --profile small/gemma4-e2b-fast
+./scripts/start tts --profile tts/piper-lessac
+./scripts/smoke-test voice-assistant --profile voice/assistant-local
 ```
 
 The `voice-assistant` smoke test does not use a live microphone. It performs a deterministic end-to-end pipeline:

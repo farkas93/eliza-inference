@@ -20,11 +20,11 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 ./scripts/doctor
 ./scripts/install
 ./scripts/install-llamacpp
-./scripts/install-stt --profile stt-faster-whisper-small-cpu
-./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-stt --profile stt/faster-whisper-small-cpu
+./scripts/install-tts --backend piper --profile tts/piper-lessac
 ./scripts/install-vocode
-./scripts/download-models eliza-small --profile eliza-small-gemma4-e2b-fast
-./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/download-models eliza-small --profile small/gemma4-e2b-fast
+./scripts/download-models eliza-medium --profile medium/qwen-llamacpp-32k
 ./scripts/start-stack
 ./scripts/smoke-test-stack
 ```
@@ -34,34 +34,43 @@ The default stack is defined in `configs/eliza-stack.toml`.
 Start speech services independently:
 
 ```bash
-./scripts/install-stt --profile stt-faster-whisper-small-cpu
-./scripts/start stt --profile stt-faster-whisper-small-cpu
+./scripts/install-stt --profile stt/faster-whisper-small-cpu
+./scripts/start stt --profile stt/faster-whisper-small-cpu
 ./scripts/smoke-test stt
 
-./scripts/install-tts --backend piper --profile tts-piper-lessac
-./scripts/start tts --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts/piper-lessac
+./scripts/start tts --profile tts/piper-lessac
 ./scripts/smoke-test tts
 ```
 
 Start `eliza-medium` separately:
 
 ```bash
-./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
-./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/download-models eliza-medium --profile medium/qwen-llamacpp-32k
+./scripts/start eliza-medium --profile medium/qwen-llamacpp-32k
 ./scripts/smoke-test eliza-medium
 ```
 
 ## Profiles
 
-Profiles live under `configs/profiles/` and control runtime, model, context size, network binding, and backend-specific flags.
+Profiles live under `configs/profiles/` and are grouped by capability/runtime class:
+
+- `configs/profiles/small/`
+- `configs/profiles/medium/`
+- `configs/profiles/stt/`
+- `configs/profiles/tts/`
+- `configs/profiles/vocode/`
+- `configs/profiles/voice/`
+
+Use path-style profile IDs in commands, for example `small/gemma4-e2b-fast` or `medium/qwen-llamacpp-32k`.
 
 Voice profiles include llama.cpp and vLLM variants so Gemma backends can be compared without changing client code.
 
 ## Common Commands
 
 ```bash
-./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
-./scripts/start eliza-small --profile eliza-small-gemma4-e2b-fast
+./scripts/start eliza-medium --profile medium/qwen-llamacpp-32k
+./scripts/start eliza-small --profile small/gemma4-e2b-fast
 ./scripts/status eliza-medium
 ./scripts/logs eliza-small
 ./scripts/stop eliza-small
@@ -78,8 +87,8 @@ vLLM profiles are experimental on GB10 in this repo. To remove the local vLLM en
 Test the Vocode bridge transport spike:
 
 ```bash
-./scripts/start vocode-bridge --profile vocode-bridge-local
-./scripts/smoke-test vocode-bridge --profile vocode-bridge-local
+./scripts/start vocode-bridge --profile vocode/bridge-local
+./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
 ## Vocode Pipeline

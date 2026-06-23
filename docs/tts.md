@@ -21,14 +21,14 @@ curl http://127.0.0.1:8012/v1/audio/speech \
 
 | Profile | Backend | Voice |
 | --- | --- | --- |
-| `tts-piper-lessac` | Piper | `en_US-lessac-medium` |
-| `tts-piper-amy` | Piper | `en_US-amy-medium` |
+| `tts/piper-lessac` | Piper | `en_US-lessac-medium` |
+| `tts/piper-amy` | Piper | `en_US-amy-medium` |
 
 ## Commands
 
 ```bash
-./scripts/install-tts --backend piper --profile tts-piper-lessac
-./scripts/start tts --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts/piper-lessac
+./scripts/start tts --profile tts/piper-lessac
 ./scripts/smoke-test tts
 ```
 

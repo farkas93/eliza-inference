@@ -3,37 +3,37 @@ name = "eliza-local"
 
 [[services]]
 name = "stt"
-profile = "stt-faster-whisper-small-cpu"
+profile = "stt/faster-whisper-small-cpu"
 health_url = "http://127.0.0.1:8011/health"
 enabled = true
 
 [[services]]
 name = "tts"
-profile = "tts-piper-lessac"
+profile = "tts/piper-lessac"
 health_url = "http://127.0.0.1:8012/health"
 enabled = true
 
 [[services]]
 name = "eliza-small"
-profile = "eliza-small-gemma4-e2b-fast"
+profile = "small/gemma4-e2b-fast"
 health_url = "http://127.0.0.1:8002/v1/models"
 enabled = true
 
 [[services]]
 name = "eliza-medium"
-profile = "eliza-medium-qwen-llamacpp-32k"
+profile = "medium/qwen-llamacpp-32k"
 health_url = "http://127.0.0.1:8001/v1/models"
 enabled = true
 
 [[services]]
 name = "vocode-bridge"
-profile = "vocode-bridge-local"
+profile = "vocode/bridge-local"
 health_url = "http://127.0.0.1:8021/health"
 enabled = true
 
 [models.eliza-small]
 service = "eliza-small"
-profile = "eliza-small-gemma4-e2b-fast"
+profile = "small/gemma4-e2b-fast"
 public_name = "eliza-small"
 actual_model = "gemma-4-e2b-it-q4-k-m"
 base_url = "http://127.0.0.1:8002/v1"
@@ -41,7 +41,7 @@ purpose = "low-latency voice turns"
 
 [models.eliza-medium]
 service = "eliza-medium"
-profile = "eliza-medium-qwen-llamacpp-32k"
+profile = "medium/qwen-llamacpp-32k"
 public_name = "eliza-medium"
 actual_model = "qwen-3.6-27b-ud-q4-k-xl"
 base_url = "http://127.0.0.1:8001/v1"

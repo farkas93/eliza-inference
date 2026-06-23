@@ -38,7 +38,9 @@ parse_service_profile "$@"
 base_url="$(service_base_url)"
 model="$(service_model_name)"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-output="$ROOT_DIR/benchmarks/results/${SERVICE}-${PROFILE:-default}-${TOKENS}-${timestamp}.json"
+profile_slug="${PROFILE:-default}"
+profile_slug="${profile_slug//\//-}"
+output="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-${TOKENS}-${timestamp}.json"
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
   echo "Base venv missing. Run ./scripts/install first." >&2

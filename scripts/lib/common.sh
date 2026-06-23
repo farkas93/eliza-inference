@@ -64,9 +64,37 @@ usage_service_profile() {
 Usage: ./scripts/$command_name <service> [--profile <profile-name>]
 
 Examples:
-  ./scripts/$command_name eliza-medium --profile eliza-medium-qwen-llamacpp-32k
-  ./scripts/$command_name eliza-small --profile eliza-small-gemma4-e2b-fast
+  ./scripts/$command_name eliza-medium --profile medium/qwen-llamacpp-32k
+  ./scripts/$command_name eliza-small --profile small/gemma4-e2b-fast
 USAGE
+}
+
+resolve_profile_path() {
+  local profile="$1"
+  local candidate
+
+  candidate="$ROOT_DIR/configs/profiles/$profile.env"
+  if [[ -f "$candidate" ]]; then
+    echo "$candidate"
+    return 0
+  fi
+
+  case "$profile" in
+    eliza-medium-*) profile="medium/${profile#eliza-medium-}" ;;
+    eliza-small-*) profile="small/${profile#eliza-small-}" ;;
+    stt-*) profile="stt/${profile#stt-}" ;;
+    tts-*) profile="tts/${profile#tts-}" ;;
+    vocode-bridge-*) profile="vocode/${profile#vocode-}" ;;
+    voice-assistant-*) profile="voice/${profile#voice-}" ;;
+  esac
+
+  candidate="$ROOT_DIR/configs/profiles/$profile.env"
+  if [[ -f "$candidate" ]]; then
+    echo "$candidate"
+    return 0
+  fi
+
+  return 1
 }
 
 parse_service_profile() {
@@ -98,12 +126,12 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      eliza-medium) PROFILE="eliza-medium-qwen-llamacpp-32k" ;;
-      eliza-small) PROFILE="eliza-small-gemma4-e2b-fast" ;;
-      stt) PROFILE="stt-faster-whisper-small-cpu" ;;
-      tts) PROFILE="tts-piper-lessac" ;;
-      voice-assistant) PROFILE="voice-assistant-local" ;;
-      vocode-bridge) PROFILE="vocode-bridge-local" ;;
+      eliza-medium) PROFILE="medium/qwen-llamacpp-32k" ;;
+      eliza-small) PROFILE="small/gemma4-e2b-fast" ;;
+      stt) PROFILE="stt/faster-whisper-small-cpu" ;;
+      tts) PROFILE="tts/piper-lessac" ;;
+      voice-assistant) PROFILE="voice/assistant-local" ;;
+      vocode-bridge) PROFILE="vocode/bridge-local" ;;
       *)
         echo "No default profile for service: $SERVICE" >&2
         exit 2
@@ -111,9 +139,9 @@ parse_service_profile() {
     esac
   fi
 
-  PROFILE_PATH="$ROOT_DIR/configs/profiles/$PROFILE.env"
-  if [[ ! -f "$PROFILE_PATH" ]]; then
-    echo "Profile not found: $PROFILE_PATH" >&2
+  PROFILE_PATH="$(resolve_profile_path "$PROFILE" || true)"
+  if [[ -z "$PROFILE_PATH" ]]; then
+    echo "Profile not found under configs/profiles: $PROFILE" >&2
     exit 1
   fi
 

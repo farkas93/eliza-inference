@@ -116,14 +116,14 @@ Use a recent llama.cpp build. Prefer `mmproj-BF16.gguf` for Gemma 4 audio. Start
 Install and verify Piper with:
 
 ```bash
-./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-tts --backend piper --profile tts/piper-lessac
 ```
 
 If the installer succeeds but the TTS service fails, make sure `.venvs/tts/bin/piper` exists or set `PIPER_BIN` in `.env`, then restart the service:
 
 ```bash
-./scripts/restart tts --profile tts-piper-lessac
-./scripts/smoke-test tts --profile tts-piper-lessac
+./scripts/restart tts --profile tts/piper-lessac
+./scripts/smoke-test tts --profile tts/piper-lessac
 ```
 
 If synthesis fails, verify the voice files exist:
@@ -150,39 +150,39 @@ This CTranslate2 package was not compiled with CUDA support
 the installed CTranslate2 wheel is CPU-only. Use the CPU STT profile:
 
 ```bash
-./scripts/stop stt --profile stt-faster-whisper-small
-./scripts/start stt --profile stt-faster-whisper-small-cpu
-./scripts/smoke-test stt --profile stt-faster-whisper-small-cpu
+./scripts/stop stt --profile stt/faster-whisper-small
+./scripts/start stt --profile stt/faster-whisper-small-cpu
+./scripts/smoke-test stt --profile stt/faster-whisper-small-cpu
 ```
 
-For the full voice pipeline, `voice-assistant-local` now expects `whisper-small` by default. GPU STT should be treated as a later optimization via CUDA-enabled CTranslate2 or a whisper.cpp backend.
+For the full voice pipeline, `voice/assistant-local` now expects `whisper-small` by default. GPU STT should be treated as a later optimization via CUDA-enabled CTranslate2 or a whisper.cpp backend.
 
 ## Qwen OOM
 
 Try profiles in this order:
 
 ```text
-eliza-medium-qwen-llamacpp-32k
-eliza-medium-qwen-llamacpp-128k
-eliza-medium-qwen-q6-llamacpp-32k
-eliza-medium-qwen-q8-llamacpp-32k
-eliza-medium-vllm-smoke-tinyllama
-eliza-medium-qwen-vllm-smoke-8k
-eliza-medium-qwen-vllm-smoke-32k
-eliza-medium-qwen-vllm-128k-experimental
-eliza-medium-qwen-vllm-200k-experimental
-eliza-medium-qwen-vllm-200k-fp8kv-experimental
-eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental
+medium/qwen-llamacpp-32k
+medium/qwen-llamacpp-128k
+medium/qwen-q6-llamacpp-32k
+medium/qwen-q8-llamacpp-32k
+medium/vllm-smoke-tinyllama
+medium/qwen-vllm-smoke-8k
+medium/qwen-vllm-smoke-32k
+medium/qwen-vllm-128k-experimental
+medium/qwen-vllm-200k-experimental
+medium/qwen-vllm-200k-fp8kv-experimental
+medium/qwen36-35b-a3b-llamacpp-200k-experimental
 ```
 
 Stop `eliza-small` before testing larger `eliza-medium` profiles.
 
-If Qwen hangs during vLLM model load with no API port listening, first test `eliza-medium-qwen-vllm-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
+If Qwen hangs during vLLM model load with no API port listening, first test `medium/qwen-vllm-smoke-8k`. The smoke profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
 
 If vLLM remains unreliable, clean it up and use the llama.cpp Qwen profile:
 
 ```bash
 ./scripts/cleanup-vllm
-./scripts/download-models eliza-medium --profile eliza-medium-qwen-llamacpp-32k
-./scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+./scripts/download-models eliza-medium --profile medium/qwen-llamacpp-32k
+./scripts/start eliza-medium --profile medium/qwen-llamacpp-32k
 ```

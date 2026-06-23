@@ -21,8 +21,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen-llamacpp-32k --show-raw
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
 USAGE
   exit 0
 fi
@@ -78,8 +78,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen-llamacpp-32k --show-raw
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
 USAGE
       exit 0
       ;;
@@ -99,7 +99,9 @@ parse_service_profile "$@"
 base_url="$(service_base_url)"
 model="$(service_model_name)"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-output="$ROOT_DIR/benchmarks/results/${SERVICE}-${PROFILE:-default}-stream-${timestamp}.json"
+profile_slug="${PROFILE:-default}"
+profile_slug="${profile_slug//\//-}"
+output="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-stream-${timestamp}.json"
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
   echo "Base venv missing. Run ./scripts/install first." >&2

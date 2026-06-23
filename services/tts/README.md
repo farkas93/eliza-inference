@@ -11,6 +11,6 @@ POST /v1/audio/speech
 Start:
 
 ```bash
-./scripts/start tts --profile tts-piper-lessac
+./scripts/start tts --profile tts/piper-lessac
 ./scripts/smoke-test tts
 ```

@@ -15,7 +15,7 @@ Vocode should use adapters that call those endpoints rather than embedding STT/T
 Run the hosted-service pipeline smoke test:
 
 ```bash
-./scripts/smoke-test voice-assistant --profile voice-assistant-local
+./scripts/smoke-test voice-assistant --profile voice/assistant-local
 ```
 
 This creates a synthetic prompt WAV through TTS, transcribes it through STT, sends the transcript to the voice LLM, and synthesizes the assistant response.

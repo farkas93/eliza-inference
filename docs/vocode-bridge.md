@@ -26,20 +26,20 @@ This lets us validate the transport protocol independently before deciding wheth
 Make sure STT and TTS are running first:
 
 ```bash
-./scripts/start stt --profile stt-faster-whisper-small-cpu
-./scripts/start tts --profile tts-piper-lessac
+./scripts/start stt --profile stt/faster-whisper-small-cpu
+./scripts/start tts --profile tts/piper-lessac
 ```
 
 Then start the bridge:
 
 ```bash
-./scripts/start vocode-bridge --profile vocode-bridge-local
+./scripts/start vocode-bridge --profile vocode/bridge-local
 ```
 
 ## Smoke Test
 
 ```bash
-./scripts/smoke-test vocode-bridge --profile vocode-bridge-local
+./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
 The smoke test:

@@ -63,8 +63,8 @@ Stop everything in reverse order:
 ```bash
 ./scripts/install
 ./scripts/install-llamacpp
-./scripts/install-stt --profile stt-faster-whisper-small-cpu
-./scripts/install-tts --backend piper --profile tts-piper-lessac
+./scripts/install-stt --profile stt/faster-whisper-small-cpu
+./scripts/install-tts --backend piper --profile tts/piper-lessac
 ./scripts/install-vocode
 ```
 
@@ -118,8 +118,8 @@ Useful options:
 Useful options:
 
 ```bash
-./scripts/install-tts --backend piper --profile tts-piper-lessac
-./scripts/install-tts --backend piper --profile tts-piper-amy
-./scripts/install-tts --backend piper --profile tts-piper-lessac --no-download
-./scripts/install-tts --backend piper --profile tts-piper-lessac --no-install
+./scripts/install-tts --backend piper --profile tts/piper-lessac
+./scripts/install-tts --backend piper --profile tts/piper-amy
+./scripts/install-tts --backend piper --profile tts/piper-lessac --no-download
+./scripts/install-tts --backend piper --profile tts/piper-lessac --no-install
 ```
