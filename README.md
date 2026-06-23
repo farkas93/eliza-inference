@@ -23,8 +23,8 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 ./scripts/install-stt --profile stt/faster-whisper-small-cpu
 ./scripts/install-tts --backend piper --profile tts/piper-lessac
 ./scripts/install-vocode
-./scripts/download-models eliza-small --profile small/gemma4-e2b-fast
-./scripts/download-models eliza-medium --profile medium/qwen-llamacpp-32k
+./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
 ./scripts/start-stack
 ./scripts/smoke-test-stack
 ```
@@ -46,8 +46,8 @@ Start speech services independently:
 Start `eliza-medium` separately:
 
 ```bash
-./scripts/download-models eliza-medium --profile medium/qwen-llamacpp-32k
-./scripts/start eliza-medium --profile medium/qwen-llamacpp-32k
+./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
 ./scripts/smoke-test eliza-medium
 ```
 
@@ -62,15 +62,15 @@ Profiles live under `configs/profiles/` and are grouped by capability/runtime cl
 - `configs/profiles/vocode/`
 - `configs/profiles/voice/`
 
-Use path-style profile IDs in commands, for example `small/gemma4-e2b-fast` or `medium/qwen-llamacpp-32k`.
+Use path-style profile IDs in commands, for example `small/gemma4-e2b-q4-llamacpp-8k` or `medium/qwen3_6-27b-q4-llamacpp-32k`.
 
 Voice profiles include llama.cpp and vLLM variants so Gemma backends can be compared without changing client code.
 
 ## Common Commands
 
 ```bash
-./scripts/start eliza-medium --profile medium/qwen-llamacpp-32k
-./scripts/start eliza-small --profile small/gemma4-e2b-fast
+./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/status eliza-medium
 ./scripts/logs eliza-small
 ./scripts/stop eliza-small

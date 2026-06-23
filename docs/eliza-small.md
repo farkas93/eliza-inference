@@ -5,7 +5,7 @@
 ## Default Profile
 
 ```text
-small/gemma4-e2b-fast
+small/gemma4-e2b-q4-llamacpp-8k
 ```
 
 ```text
@@ -21,19 +21,19 @@ Port: 8002
 
 | Profile | Backend | Model | Use |
 | --- | --- | --- | --- |
-| `small/gemma4-e2b-fast` | llama.cpp | Gemma 4 E2B | Default low-latency voice model |
-| `small/gemma4-e4b-quality` | llama.cpp | Gemma 4 E4B | Higher-quality voice model |
-| `small/gemma4-12b-quality` | llama.cpp | Gemma 4 12B | Higher-quality experimental profile |
-| `small/gemma4-e4b-vllm-experimental` | vLLM | Gemma 4 E4B HF | Experimental vLLM comparison |
-| `small/gemma3-4b-stable` | llama.cpp | Gemma 3 4B QAT | Stable fallback |
+| `small/gemma4-e2b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E2B | Default low-latency voice model |
+| `small/gemma4-e4b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E4B | Alternative 8K llama.cpp profile |
+| `small/gemma4-12b-q4-llamacpp-8k` | llama.cpp | Gemma 4 12B | Larger Gemma profile on small tier |
+| `small/gemma4-e4b-vllm-8k` | vLLM | Gemma 4 E4B HF | vLLM profile for runtime comparison |
+| `small/gemma3-4b-q4-llamacpp-8k` | llama.cpp | Gemma 3 4B QAT | Smaller fallback profile |
 
 ## Start And Test
 
 ```bash
-./scripts/download-models eliza-small --profile small/gemma4-e2b-fast
-./scripts/start eliza-small --profile small/gemma4-e2b-fast
-./scripts/smoke-test eliza-small --profile small/gemma4-e2b-fast
-./scripts/benchmark-latency eliza-small --profile small/gemma4-e2b-fast
+./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/smoke-test eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/benchmark-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ```
 
 ## Voice Stack

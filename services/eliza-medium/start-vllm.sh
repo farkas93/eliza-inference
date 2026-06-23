@@ -18,7 +18,7 @@ cmd=(
   "${vllm_cmd[@]}" serve "${MODEL_ID:?MODEL_ID is required}"
   --host "${HOST:-0.0.0.0}"
   --port "${PORT:-8001}"
-  --max-model-len "${MAX_MODEL_LEN:-200000}"
+  --max-model-len "${MAX_MODEL_LEN:-262144}"
   --max-num-seqs "${MAX_NUM_SEQS:-1}"
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.50}"
 )

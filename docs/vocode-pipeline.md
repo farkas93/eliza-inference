@@ -46,7 +46,7 @@ Before wiring live microphone/speaker Vocode adapters, test the same service bou
 
 ```bash
 ./scripts/start stt --profile stt/faster-whisper-small-cpu
-./scripts/start eliza-small --profile small/gemma4-e2b-fast
+./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/start tts --profile tts/piper-lessac
 ./scripts/smoke-test voice-assistant --profile voice/assistant-local
 ```

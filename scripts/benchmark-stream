@@ -21,8 +21,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
   exit 0
 fi
@@ -78,8 +78,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen36-35b-a3b-llamacpp-200k-experimental --max-tokens 1024
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
+  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
       exit 0
       ;;
