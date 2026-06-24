@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SUITE_DIR="$ROOT_DIR/scripts/installation-suite"
+
+WITH_VLLM="false"
+DOWNLOAD_MODELS="true"
+RUN_SMOKE_TESTS="true"
+SMALL_PROFILE="small/gemma4-e2b-q4-llamacpp-8k"
+MEDIUM_PROFILE="medium/qwen3_6-27b-q4-llamacpp-32k"
+STT_PROFILE="stt/faster-whisper-small-cpu"
+TTS_PROFILE="tts/piper-lessac"
+
+print_manual() {
+  cat <<USAGE
+Usage: ./scripts/setup clean-system [options]
+
+Runs clean-system setup in this order:
+  1) prerequisites
+  2) llamacpp
+  3) stt
+  4) tts
+  5) vocode
+  6) optional vllm
+  7) optional model downloads (eliza-small, eliza-medium)
+  8) optional smoke tests (stt, tts, eliza-small, eliza-medium)
+
+Options:
+  --with-vllm            Include vLLM installation.
+  --no-download-models   Skip model downloads.
+  --no-smoke-tests       Skip smoke tests.
+  --small-profile NAME   Override small model profile. Default: $SMALL_PROFILE
+  --medium-profile NAME  Override medium model profile. Default: $MEDIUM_PROFILE
+  --stt-profile NAME     Override STT profile. Default: $STT_PROFILE
+  --tts-profile NAME     Override TTS profile. Default: $TTS_PROFILE
+USAGE
+}
+
+if [[ $# -eq 0 ]]; then
+  print_manual
+  exit 0
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --with-vllm)
+      WITH_VLLM="true"
+      shift
+      ;;
+    --no-download-models)
+      DOWNLOAD_MODELS="false"
+      shift
+      ;;
+    --no-smoke-tests)
+      RUN_SMOKE_TESTS="false"
+      shift
+      ;;
+    --small-profile)
+      SMALL_PROFILE="${2:-}"
+      shift 2
+      ;;
+    --medium-profile)
+      MEDIUM_PROFILE="${2:-}"
+      shift 2
+      ;;
+    --stt-profile)
+      STT_PROFILE="${2:-}"
+      shift 2
+      ;;
+    --tts-profile)
+      TTS_PROFILE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      print_manual
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "[1/8] Installing prerequisites"
+"$SUITE_DIR/install-prerequisites"
+
+echo "[2/8] Installing llama.cpp"
+"$SUITE_DIR/install-llamacpp"
+
+echo "[3/8] Installing STT"
+"$SUITE_DIR/install-stt" --profile "$STT_PROFILE"
+
+echo "[4/8] Installing TTS"
+"$SUITE_DIR/install-tts" --profile "$TTS_PROFILE"
+
+echo "[5/8] Installing vocode bridge deps"
+"$SUITE_DIR/install-vocode"
+
+if [[ "$WITH_VLLM" == "true" ]]; then
+  echo "[6/8] Installing vLLM"
+  "$SUITE_DIR/install-vllm"
+else
+  echo "[6/8] Skipping vLLM (use --with-vllm to enable)"
+fi
+
+if [[ "$DOWNLOAD_MODELS" == "true" ]]; then
+  echo "[7/8] Downloading default models"
+  "$ROOT_DIR/scripts/download-models" eliza-small --profile "$SMALL_PROFILE"
+  "$ROOT_DIR/scripts/download-models" eliza-medium --profile "$MEDIUM_PROFILE"
+else
+  echo "[7/8] Skipping model downloads"
+fi
+
+if [[ "$RUN_SMOKE_TESTS" == "true" ]]; then
+  echo "[8/8] Running smoke tests"
+  "$ROOT_DIR/scripts/smoke-test" stt --profile "$STT_PROFILE"
+  "$ROOT_DIR/scripts/smoke-test" tts --profile "$TTS_PROFILE"
+  "$ROOT_DIR/scripts/smoke-test" eliza-small --profile "$SMALL_PROFILE"
+  "$ROOT_DIR/scripts/smoke-test" eliza-medium --profile "$MEDIUM_PROFILE"
+else
+  echo "[8/8] Skipping smoke tests"
+fi
+
+echo
+echo "Clean-system setup completed."

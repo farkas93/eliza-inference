@@ -105,7 +105,7 @@ cat <<EOF
 
 
 Recommended stable path now:
-  ./scripts/install-llamacpp
+  ./scripts/setup llamacpp
   ./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
   ./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
   ./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k

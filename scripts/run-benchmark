@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SUITE_DIR="$ROOT_DIR/scripts/benchmark-suite"
+
+print_manual() {
+  cat <<'USAGE'
+Usage: ./scripts/run-benchmark <type> [service] [options]
+
+Types:
+  token-generation   Streaming generation timing and throughput insights
+  voice-latency      Voice-oriented latency benchmark
+  memory-footprint   GPU memory snapshots with context-loaded requests
+  all                Run token-generation + memory-footprint for eliza-medium,
+                     then voice-latency for eliza-small
+
+Examples:
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+  ./scripts/run-benchmark voice-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+  ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens-list 8192,32768,131072
+  ./scripts/run-benchmark all
+
+Use './scripts/run-benchmark <type> --help' for type-specific options.
+USAGE
+}
+
+if [[ $# -eq 0 ]]; then
+  print_manual
+  exit 0
+fi
+
+case "$1" in
+  -h|--help)
+    print_manual
+    exit 0
+    ;;
+  token-generation)
+    shift
+    exec "$SUITE_DIR/token-generation" "$@"
+    ;;
+  voice-latency)
+    shift
+    exec "$SUITE_DIR/voice-latency" "$@"
+    ;;
+  memory-footprint)
+    shift
+    exec "$SUITE_DIR/memory-footprint" "$@"
+    ;;
+  all)
+    shift
+    if [[ $# -gt 0 ]]; then
+      echo "'all' does not accept extra arguments. Run individual benchmark types for custom flags." >&2
+      exit 2
+    fi
+    "$SUITE_DIR/token-generation" eliza-medium "$@"
+    "$SUITE_DIR/memory-footprint" eliza-medium "$@"
+    "$SUITE_DIR/voice-latency" eliza-small "$@"
+    ;;
+  *)
+    echo "Unknown benchmark type: $1" >&2
+    echo "Run './scripts/run-benchmark --help' for usage." >&2
+    exit 2
+    ;;
+esac

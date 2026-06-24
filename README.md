@@ -18,11 +18,11 @@ Services bind to `0.0.0.0` by default for LAN access. Do not expose them directl
 
 ```bash
 ./scripts/doctor
-./scripts/install
-./scripts/install-llamacpp
-./scripts/install-stt --profile stt/faster-whisper-small-cpu
-./scripts/install-tts --backend piper --profile tts/piper-lessac
-./scripts/install-vocode
+./scripts/setup prerequisites
+./scripts/setup llamacpp
+./scripts/setup stt --profile stt/faster-whisper-small-cpu
+./scripts/setup tts --backend piper --profile tts/piper-lessac
+./scripts/setup vocode
 ./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
 ./scripts/start-stack
@@ -34,11 +34,11 @@ The default stack is defined in `configs/eliza-stack.toml`.
 Start speech services independently:
 
 ```bash
-./scripts/install-stt --profile stt/faster-whisper-small-cpu
+./scripts/setup stt --profile stt/faster-whisper-small-cpu
 ./scripts/start stt --profile stt/faster-whisper-small-cpu
 ./scripts/smoke-test stt
 
-./scripts/install-tts --backend piper --profile tts/piper-lessac
+./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/start tts --profile tts/piper-lessac
 ./scripts/smoke-test tts
 ```
@@ -74,8 +74,8 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 ./scripts/status eliza-medium
 ./scripts/logs eliza-small
 ./scripts/stop eliza-small
-./scripts/benchmark-latency eliza-small
-./scripts/benchmark-context eliza-medium --tokens 32000
+./scripts/run-benchmark voice-latency eliza-small
+./scripts/run-benchmark memory-footprint eliza-medium --context-tokens 32768
 ```
 
 vLLM profiles are experimental on GB10 in this repo. To remove the local vLLM environment and return to the llama.cpp-first path:

@@ -33,7 +33,7 @@ Port: 8002
 ./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/smoke-test eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
-./scripts/benchmark-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/run-benchmark voice-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ```
 
 ## Voice Stack

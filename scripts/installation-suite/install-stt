@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/install-stt [options]
+Usage: ./scripts/setup stt [options]
 
 Installs and verifies the STT service environment.
 
@@ -45,7 +45,7 @@ USAGE
 done
 
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is required. Run ./scripts/install first." >&2
+  echo "uv is required. Run ./scripts/setup prerequisites first." >&2
   exit 1
 fi
 

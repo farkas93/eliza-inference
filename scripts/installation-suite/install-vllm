@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/install-vllm [options]
+Usage: ./scripts/setup vllm [options]
 
 Installs and verifies vLLM for GPU serving.
 
@@ -62,7 +62,7 @@ done
 
 require_uv() {
   if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required. Run ./scripts/install first." >&2
+    echo "uv is required. Run ./scripts/setup prerequisites first." >&2
     exit 1
   fi
 }
@@ -98,7 +98,7 @@ verify_native_build_prereqs() {
 
   if [[ ! -x "$VLLM_VENV/bin/ninja" ]]; then
     echo "Missing ninja in vLLM environment: $VLLM_VENV/bin/ninja" >&2
-    echo "Run ./scripts/install-vllm to install FlashInfer/vLLM JIT build helpers." >&2
+    echo "Run ./scripts/setup vllm to install FlashInfer/vLLM JIT build helpers." >&2
     exit 1
   fi
 
@@ -216,10 +216,10 @@ cat <<'EOF'
 
 
 Next low-risk serving check:
-  ./scripts/start voice-llm --profile voice-gemma4-e4b-vllm-text
-  ./scripts/smoke-test voice-llm --profile voice-gemma4-e4b-vllm-text
+  ./scripts/start eliza-small --profile small/gemma4-e4b-vllm-8k
+  ./scripts/smoke-test eliza-small --profile small/gemma4-e4b-vllm-8k
 
 Then test Qwen conservatively:
-  ./scripts/start qwen-coder --profile qwen-shared-128k
-  ./scripts/smoke-test qwen-coder --profile qwen-shared-128k
+  ./scripts/start eliza-medium --profile medium/qwen3_6-27b-fp8-vllm-8k
+  ./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-fp8-vllm-8k
 EOF

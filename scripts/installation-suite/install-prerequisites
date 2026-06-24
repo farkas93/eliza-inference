@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
@@ -22,7 +22,7 @@ install_uv() {
 
   if ! command -v uv >/dev/null 2>&1; then
     echo "uv installation finished, but uv is still not on PATH." >&2
-    echo "Open a new shell or add ~/.local/bin to PATH, then rerun ./scripts/install." >&2
+    echo "Open a new shell or add ~/.local/bin to PATH, then rerun ./scripts/setup prerequisites." >&2
     return 1
   fi
 }

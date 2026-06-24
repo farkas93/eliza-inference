@@ -10,7 +10,7 @@ vllm_cmd=()
 if command -v "$VLLM_BIN" >/dev/null 2>&1 || [[ -x "$VLLM_BIN" ]]; then
   vllm_cmd=("$VLLM_BIN")
 else
-  echo "vLLM CLI not found and uv is unavailable. Run ./scripts/install-vllm or set VLLM_BIN in .env." >&2
+  echo "vLLM CLI not found and uv is unavailable. Run ./scripts/setup vllm or set VLLM_BIN in .env." >&2
   exit 1
 fi
 

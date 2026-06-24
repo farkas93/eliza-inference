@@ -40,7 +40,7 @@ stack_config() {
   elif command -v uv >/dev/null 2>&1; then
     uv run --project "$ROOT_DIR" python "$ROOT_DIR/scripts/lib/stack_config.py" "$@"
   else
-    echo "Python is required to parse stack TOML. Run ./scripts/install first." >&2
+    echo "Python is required to parse stack TOML. Run ./scripts/setup prerequisites first." >&2
     exit 1
   fi
 }

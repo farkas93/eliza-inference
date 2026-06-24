@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMMAND_NAME="benchmark-stream"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMMAND_NAME="token-generation"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
@@ -10,7 +10,7 @@ load_env
 SERVICE="${1:-}"
 if [[ "$SERVICE" == "-h" || "$SERVICE" == "--help" ]]; then
   cat <<USAGE
-Usage: ./scripts/benchmark-stream <service> [--profile <profile-name>] [options]
+Usage: ./scripts/run-benchmark token-generation <service> [--profile <profile-name>] [options]
 
 Options:
   --max-tokens <n>       Completion token cap (default: 256)
@@ -21,8 +21,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
   exit 0
 fi
@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/benchmark-stream <service> [--profile <profile-name>] [options]
+Usage: ./scripts/run-benchmark token-generation <service> [--profile <profile-name>] [options]
 
 Options:
   --max-tokens <n>       Completion token cap (default: 256)
@@ -78,8 +78,8 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
-  ./scripts/benchmark-stream eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
       exit 0
       ;;
@@ -104,7 +104,7 @@ profile_slug="${profile_slug//\//-}"
 output="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-stream-${timestamp}.json"
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
-  echo "Base venv missing. Run ./scripts/install first." >&2
+  echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2
   exit 1
 fi
 

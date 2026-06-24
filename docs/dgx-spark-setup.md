@@ -61,11 +61,11 @@ Stop everything in reverse order:
 ## Installation
 
 ```bash
-./scripts/install
-./scripts/install-llamacpp
-./scripts/install-stt --profile stt/faster-whisper-small-cpu
-./scripts/install-tts --backend piper --profile tts/piper-lessac
-./scripts/install-vocode
+./scripts/setup prerequisites
+./scripts/setup llamacpp
+./scripts/setup stt --profile stt/faster-whisper-small-cpu
+./scripts/setup tts --backend piper --profile tts/piper-lessac
+./scripts/setup vocode
 ```
 
 `scripts/install` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
@@ -87,9 +87,9 @@ If `uv` is installed but not visible in the current shell, open a new shell or a
 Useful options:
 
 ```bash
-./scripts/install-llamacpp --clean
-./scripts/install-llamacpp --no-update
-./scripts/install-llamacpp --dir ~/src/llama.cpp
+./scripts/setup llamacpp --clean
+./scripts/setup llamacpp --no-update
+./scripts/setup llamacpp --dir ~/src/llama.cpp
 ```
 
 If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAMA_SERVER_BIN` line to `.env`.
@@ -105,10 +105,10 @@ To clean up vLLM attempts and return to the llama.cpp-first setup:
 Useful options:
 
 ```bash
-./scripts/install-vllm --no-install
-./scripts/install-vllm --pre
-./scripts/install-vllm --package vllm
-./scripts/install-vllm --torch-backend auto
+./scripts/setup vllm --no-install
+./scripts/setup vllm --pre
+./scripts/setup vllm --package vllm
+./scripts/setup vllm --torch-backend auto
 ```
 
 `install-stt` installs FastAPI and faster-whisper into `.venvs/stt`, downloads the selected profile model, and verifies imports.
@@ -118,8 +118,8 @@ Useful options:
 Useful options:
 
 ```bash
-./scripts/install-tts --backend piper --profile tts/piper-lessac
-./scripts/install-tts --backend piper --profile tts/piper-amy
-./scripts/install-tts --backend piper --profile tts/piper-lessac --no-download
-./scripts/install-tts --backend piper --profile tts/piper-lessac --no-install
+./scripts/setup tts --backend piper --profile tts/piper-lessac
+./scripts/setup tts --backend piper --profile tts/piper-amy
+./scripts/setup tts --backend piper --profile tts/piper-lessac --no-download
+./scripts/setup tts --backend piper --profile tts/piper-lessac --no-install
 ```

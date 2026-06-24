@@ -41,8 +41,7 @@ Suggested llama.cpp test ladder:
 
 ./scripts/restart eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k
 ./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k
-./scripts/benchmark-context eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k --tokens 32000
-./scripts/benchmark-context eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k --tokens 131072
+./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k --context-tokens-list 32768,131072
 ```
 
 For higher precision, download and test Q6/Q8 at 32K before trying large contexts:
@@ -62,6 +61,5 @@ To remove local vLLM state and stop stale vLLM sessions:
 ## Benchmark
 
 ```bash
-./scripts/benchmark-context eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --tokens 32000
-./scripts/benchmark-memory
+./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --context-tokens 32768
 ```

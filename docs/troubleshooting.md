@@ -24,7 +24,7 @@ Change `.env` or the profile port if needed.
 Run:
 
 ```bash
-./scripts/install-llamacpp
+./scripts/setup llamacpp
 ```
 
 The installer clones or updates llama.cpp under `~/src/llama.cpp`, installs common apt build prerequisites when possible, and builds CUDA-enabled `llama-server`, `llama-cli`, and `llama-mtmd-cli`.
@@ -39,13 +39,13 @@ which nvcc || true
 If the source checkout has local changes, either commit/stash them, use another directory, or skip updates:
 
 ```bash
-./scripts/install-llamacpp --no-update
+./scripts/setup llamacpp --no-update
 ```
 
 If the build cache is stale, rebuild from a clean build directory:
 
 ```bash
-./scripts/install-llamacpp --clean
+./scripts/setup llamacpp --clean
 ```
 
 After a successful build, add the printed `LLAMA_SERVER_BIN` line to `.env` if `llama-server` is not on `PATH`.
@@ -55,7 +55,7 @@ After a successful build, add the printed `LLAMA_SERVER_BIN` line to `.env` if `
 Run:
 
 ```bash
-./scripts/install-vllm
+./scripts/setup vllm
 ```
 
 The vLLM installer creates `.venvs/vllm`, and service launchers default to `.venvs/vllm/bin/vllm`. Set `VLLM_BIN` in `.env` only if you want to override that path.
@@ -66,22 +66,22 @@ If logs show `exec: vllm: not found`, rerun with the updated launchers or set an
 VLLM_BIN="/path/to/vllm"
 ```
 
-If vLLM exits with a `tokenizers`/`transformers` version error, rerun `./scripts/install-vllm` after pulling the latest installer changes. This only affects `.venvs/vllm`.
+If vLLM exits with a `tokenizers`/`transformers` version error, rerun `./scripts/setup vllm` after pulling the latest installer changes. This only affects `.venvs/vllm`.
 
 If vLLM exits while inspecting a model architecture with `fatal error: Python.h: No such file or directory`, Triton is compiling a runtime CUDA helper and Python development headers are missing. Install native build prerequisites, then rerun verification:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y build-essential python3.12-dev
-./scripts/install-vllm --no-install
+./scripts/setup vllm --no-install
 ```
 
-Use the `pythonX.Y-dev` package matching the Python version printed by `./scripts/install-vllm`.
+Use the `pythonX.Y-dev` package matching the Python version printed by `./scripts/setup vllm`.
 
 If vLLM exits with `FileNotFoundError: No such file or directory: 'ninja'`, FlashInfer is JIT-compiling a sampler/kernel and cannot find Ninja. Pull the latest repo and rerun:
 
 ```bash
-./scripts/install-vllm
+./scripts/setup vllm
 ```
 
 The installer now installs `ninja` into `.venvs/vllm`, and service launchers prepend `.venvs/vllm/bin` to `PATH` so FlashInfer subprocesses can find it.
@@ -98,13 +98,13 @@ nvidia-smi
 To rerun verification without reinstalling packages:
 
 ```bash
-./scripts/install-vllm --no-install
+./scripts/setup vllm --no-install
 ```
 
 If a pre-release vLLM is needed for GB10 support:
 
 ```bash
-./scripts/install-vllm --pre
+./scripts/setup vllm --pre
 ```
 
 ## Gemma 4 Audio Issues
@@ -116,7 +116,7 @@ Use a recent llama.cpp build. Prefer `mmproj-BF16.gguf` for Gemma 4 audio. Start
 Install and verify Piper with:
 
 ```bash
-./scripts/install-tts --backend piper --profile tts/piper-lessac
+./scripts/setup tts --backend piper --profile tts/piper-lessac
 ```
 
 If the installer succeeds but the TTS service fails, make sure `.venvs/tts/bin/piper` exists or set `PIPER_BIN` in `.env`, then restart the service:

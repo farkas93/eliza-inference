@@ -9,11 +9,11 @@ if [[ "$PIPER_BIN" == "piper" && -x "$TTS_VENV/bin/piper" ]]; then
   PIPER_BIN="$TTS_VENV/bin/piper"
 fi
 if [[ ! -x "$TTS_VENV/bin/python" ]]; then
-  echo "TTS venv missing: $TTS_VENV. Run ./scripts/install-tts." >&2
+  echo "TTS venv missing: $TTS_VENV. Run ./scripts/setup tts." >&2
   exit 1
 fi
 if [[ ! -x "$PIPER_BIN" ]]; then
-  echo "Piper binary missing: $PIPER_BIN. Run ./scripts/install-tts." >&2
+  echo "Piper binary missing: $PIPER_BIN. Run ./scripts/setup tts." >&2
   exit 1
 fi
 export PIPER_BIN

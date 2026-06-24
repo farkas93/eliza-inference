@@ -15,7 +15,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
-  echo "Base venv missing. Run ./scripts/install first." >&2
+  echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2
   exit 1
 fi
 
@@ -33,7 +33,7 @@ hf_download() {
   fi
 
   echo "Neither 'hf' nor 'huggingface-cli' is available through uv." >&2
-  echo "Run ./scripts/install, then retry." >&2
+  echo "Run ./scripts/setup prerequisites, then retry." >&2
   return 1
 }
 

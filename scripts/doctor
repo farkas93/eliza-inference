@@ -37,7 +37,7 @@ elif [[ -x "$ROOT_DIR/.venv/bin/piper" ]]; then
 elif command -v piper >/dev/null 2>&1; then
   echo "[ok]   piper is available at $(command -v piper)"
 else
-  echo "[info] piper is not installed yet; run ./scripts/install-tts --backend piper when testing TTS"
+  echo "[info] piper is not installed yet; run ./scripts/setup tts --backend piper when testing TTS"
 fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then

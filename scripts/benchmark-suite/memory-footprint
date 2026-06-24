@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="memory-footprint"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+SERVICE="${1:-}"
+shift || true
+PROFILE=""
+CONTEXT_TOKENS="32768"
+CONTEXT_TOKENS_LIST=""
+MAX_TOKENS="64"
+SAMPLE_COUNT="3"
+SAMPLE_INTERVAL="1"
+OUTPUT_JSON=""
+
+if [[ -z "$SERVICE" || "$SERVICE" == "-h" || "$SERVICE" == "--help" ]]; then
+  cat <<USAGE
+Usage: ./scripts/run-benchmark memory-footprint <service> [options]
+
+Options:
+  --profile <name>             Profile override
+  --context-tokens <n>         Single context target (default: 32768)
+  --context-tokens-list <csv>  Multiple targets, example: 8192,32768,131072
+  --max-tokens <n>             Completion token cap for context requests (default: 64)
+  --samples <n>                nvidia-smi samples per snapshot (default: 3)
+  --interval <sec>             Seconds between samples (default: 1)
+  --output-json <path>         Explicit output path (default: benchmarks/results/...)
+
+Examples:
+  ./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+  ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens-list 8192,32768,131072
+USAGE
+  exit 0
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="${2:-}"
+      shift 2
+      ;;
+    --context-tokens)
+      CONTEXT_TOKENS="${2:-}"
+      shift 2
+      ;;
+    --context-tokens-list)
+      CONTEXT_TOKENS_LIST="${2:-}"
+      shift 2
+      ;;
+    --max-tokens)
+      MAX_TOKENS="${2:-}"
+      shift 2
+      ;;
+    --samples)
+      SAMPLE_COUNT="${2:-}"
+      shift 2
+      ;;
+    --interval)
+      SAMPLE_INTERVAL="${2:-}"
+      shift 2
+      ;;
+    --output-json)
+      OUTPUT_JSON="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "nvidia-smi is not available" >&2
+  exit 1
+fi
+
+if [[ ! -x "$BASE_VENV/bin/python" ]]; then
+  echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2
+  exit 1
+fi
+
+set -- "$SERVICE"
+if [[ -n "$PROFILE" ]]; then
+  set -- "$SERVICE" --profile "$PROFILE"
+fi
+parse_service_profile "$@"
+
+if [[ "$SERVICE" != "eliza-small" && "$SERVICE" != "eliza-medium" ]]; then
+  echo "memory-footprint currently supports eliza-small or eliza-medium." >&2
+  exit 2
+fi
+
+base_url="$(service_base_url)"
+model="$(service_model_name)"
+timestamp="$(date +%Y%m%d-%H%M%S)"
+profile_slug="${PROFILE:-default}"
+profile_slug="${profile_slug//\//-}"
+
+if [[ -z "$OUTPUT_JSON" ]]; then
+  OUTPUT_JSON="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-memory-footprint-${timestamp}.json"
+fi
+mkdir -p "$(dirname "$OUTPUT_JSON")"
+
+capture_snapshot() {
+  local label="$1"
+  local output_file="$2"
+  nvidia-smi --query-gpu=timestamp,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits -l "$SAMPLE_INTERVAL" -c "$SAMPLE_COUNT" >"$output_file"
+  echo "Captured $label snapshot: $output_file"
+}
+
+run_context_request() {
+  local tokens="$1"
+  local result_file="$2"
+  "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/long_context_test.py" \
+    --base-url "$base_url" \
+    --model "$model" \
+    --tokens "$tokens" \
+    --max-tokens "$MAX_TOKENS" \
+    --output-json "$result_file"
+}
+
+tmp_dir="$ROOT_DIR/tmp/memory-footprint-${SERVICE}-${timestamp}"
+mkdir -p "$tmp_dir"
+
+baseline_csv="$tmp_dir/baseline.csv"
+post_load_csv="$tmp_dir/post-load.csv"
+warmup_json="$tmp_dir/warmup.json"
+
+capture_snapshot "baseline" "$baseline_csv"
+run_context_request 1024 "$warmup_json"
+capture_snapshot "post-load" "$post_load_csv"
+
+context_targets=()
+if [[ -n "$CONTEXT_TOKENS_LIST" ]]; then
+  IFS=',' read -r -a context_targets <<<"$CONTEXT_TOKENS_LIST"
+else
+  context_targets=("$CONTEXT_TOKENS")
+fi
+
+context_results_lines=()
+for target in "${context_targets[@]}"; do
+  target_trimmed="$(echo "$target" | tr -d '[:space:]')"
+  [[ -z "$target_trimmed" ]] && continue
+  request_json="$tmp_dir/context-${target_trimmed}.json"
+  snapshot_csv="$tmp_dir/context-${target_trimmed}.csv"
+  run_context_request "$target_trimmed" "$request_json"
+  capture_snapshot "context-$target_trimmed" "$snapshot_csv"
+  context_results_lines+=("$target_trimmed:$request_json:$snapshot_csv")
+done
+
+python_args=(
+  "$OUTPUT_JSON"
+  "$SERVICE"
+  "${PROFILE:-default}"
+  "$model"
+  "$baseline_csv"
+  "$post_load_csv"
+  "$warmup_json"
+)
+for item in "${context_results_lines[@]}"; do
+  python_args+=("$item")
+done
+
+"$BASE_VENV/bin/python" - "${python_args[@]}" <<'PY'
+import csv
+import json
+import pathlib
+import statistics
+import sys
+
+output = pathlib.Path(sys.argv[1])
+service = sys.argv[2]
+profile = sys.argv[3]
+model = sys.argv[4]
+baseline_csv = pathlib.Path(sys.argv[5])
+post_load_csv = pathlib.Path(sys.argv[6])
+warmup_json = pathlib.Path(sys.argv[7])
+context_specs = sys.argv[8:]
+
+def summarize_csv(path: pathlib.Path) -> dict:
+    rows = []
+    with path.open("r", encoding="utf-8") as fh:
+        reader = csv.reader(fh)
+        for row in reader:
+            if len(row) < 5:
+                continue
+            rows.append(
+                {
+                    "timestamp": row[0].strip(),
+                    "name": row[1].strip(),
+                    "memory_used_mb": float(row[2].strip()),
+                    "memory_total_mb": float(row[3].strip()),
+                    "utilization_gpu_pct": float(row[4].strip()),
+                }
+            )
+    used = [r["memory_used_mb"] for r in rows]
+    util = [r["utilization_gpu_pct"] for r in rows]
+    return {
+        "samples": rows,
+        "memory_used_mb_mean": statistics.fmean(used) if used else 0.0,
+        "memory_used_mb_max": max(used) if used else 0.0,
+        "utilization_gpu_pct_mean": statistics.fmean(util) if util else 0.0,
+        "utilization_gpu_pct_max": max(util) if util else 0.0,
+    }
+
+report = {
+    "service": service,
+    "profile": profile,
+    "model": model,
+    "baseline": summarize_csv(baseline_csv),
+    "post_load": summarize_csv(post_load_csv),
+    "warmup": json.loads(warmup_json.read_text(encoding="utf-8")),
+    "contexts": [],
+}
+
+for spec in context_specs:
+    tokens, req_path, snap_path = spec.split(":", 2)
+    report["contexts"].append(
+        {
+            "requested_tokens": int(tokens),
+            "request": json.loads(pathlib.Path(req_path).read_text(encoding="utf-8")),
+            "memory_snapshot": summarize_csv(pathlib.Path(snap_path)),
+        }
+    )
+
+output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+print(json.dumps(report, indent=2))
+PY
+
+echo "Saved benchmark: $OUTPUT_JSON"

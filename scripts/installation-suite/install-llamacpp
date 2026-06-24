@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/install-llamacpp [--clean] [--no-update] [--dir <path>]
+Usage: ./scripts/setup llamacpp [--clean] [--no-update] [--dir <path>]
 
 Builds llama.cpp with CUDA and curl support.
 
@@ -106,7 +106,7 @@ install_prereqs() {
   fi
 
   echo "Missing build prerequisites: ${missing[*]}" >&2
-  echo "Install them manually, then rerun ./scripts/install-llamacpp." >&2
+  echo "Install them manually, then rerun ./scripts/setup llamacpp." >&2
   exit 1
 }
 

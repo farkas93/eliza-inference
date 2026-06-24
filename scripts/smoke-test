@@ -9,7 +9,7 @@ load_env
 parse_service_profile "$@"
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
-  echo "Base venv missing. Run ./scripts/install first." >&2
+  echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2
   exit 1
 fi
 
