@@ -19,6 +19,10 @@ if [[ "${JINJA:-true}" == "true" ]]; then
   cmd+=(--jinja)
 fi
 
+if [[ -n "${SPEC_TYPE:-}" ]]; then
+  cmd+=(--spec-type "$SPEC_TYPE")
+fi
+
 if [[ -n "${REASONING:-}" ]]; then
   cmd+=(--reasoning "$REASONING")
 fi

@@ -64,7 +64,7 @@ usage_service_profile() {
 Usage: ./scripts/$command_name <service> [--profile <profile-name>]
 
 Examples:
-  ./scripts/$command_name eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+  ./scripts/$command_name eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
   ./scripts/$command_name eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 USAGE
 }
@@ -147,7 +147,7 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      eliza-medium) PROFILE="medium/qwen3_6-27b-q4-llamacpp-32k" ;;
+      eliza-medium) PROFILE="medium/openpangu-2_0-flash-q4-llamacpp-256k" ;;
       eliza-small) PROFILE="small/gemma4-e2b-q4-llamacpp-8k" ;;
       stt) PROFILE="stt/faster-whisper-small-cpu" ;;
       tts) PROFILE="tts/piper-lessac" ;;

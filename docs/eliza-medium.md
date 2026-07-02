@@ -1,13 +1,16 @@
 # Eliza Medium
 
-`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is llama.cpp with Qwen 3.6 27B GGUF.
+`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is llama.cpp with openPangu 2.0 Flash GGUF.
 
-The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q4_K_XL.gguf` file.
+The default llama.cpp profile uses `openPangu-2.0-Flash-ik_llama-Q4_K_M.gguf`.
 
 ## Profiles
 
 | Profile | Runtime | Context | Use |
 | --- | --- | ---: | --- |
+| `medium/openpangu-2_0-flash-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
+| `medium/openpangu-2_0-flash-q4-llamacpp-512k` | llama.cpp | `524288` | Max-context profile (capacity test) |
+| `medium/openpangu-2_0-flash-q4-llamacpp-20k` | llama.cpp | `20480` | Conservative stability fallback |
 | `medium/qwen3_6-27b-q4-llamacpp-32k` | llama.cpp | `32768` | Default compatibility profile |
 | `medium/qwen3_6-27b-q4-llamacpp-128k` | llama.cpp | `131072` | Larger context test using the default Q4 GGUF |
 | `medium/gemma4-26b-a4b-q4-llamacpp-256k` | llama.cpp | `262144` | Gemma 4 26B A4B long-context profile |
@@ -25,12 +28,20 @@ The initial llama.cpp profile uses Unsloth's dynamic quantized `Qwen3.6-27B-UD-Q
 ## Start
 
 ```bash
-./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
 ```
 
-Start with `medium/qwen3_6-27b-q4-llamacpp-32k`. If that works, add/test larger llama.cpp context profiles before revisiting vLLM.
+Start with `medium/openpangu-2_0-flash-q4-llamacpp-256k`. If that works, run the max-context sweep.
+
+Max-context sweep for openPangu:
+
+```bash
+./scripts/restart eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k
+./scripts/smoke-test eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k
+./scripts/run-benchmark memory-footprint eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k --context-tokens-list 131072,196608,262144,327680,393216,458752,524288
+```
 
 Suggested llama.cpp test ladder:
 
