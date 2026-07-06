@@ -1,6 +1,7 @@
-from textual.widgets import DataTable, ListItem, ListView
+from textual.widgets import DataTable, ListItem, Label
 from textual.containers import Container
-from core.models import Service, Profile
+from textual.widgets import ListView
+from core.models import Profile, Service
 from typing import List
 
 class ServiceTable(DataTable):
@@ -17,4 +18,7 @@ class ProfileList(ListView):
     def update_data(self, profiles: List[Profile]):
         self.clear()
         for p in profiles:
-            self.append(ListItem(p.name, id=p.name))
+            # Sanitize id by replacing slashes with underscores
+            safe_id = p.name.replace("/", "_")
+            # ListItem expects a Widget (like Label) as its first argument
+            self.append(ListItem(Label(p.name), id=safe_id))
