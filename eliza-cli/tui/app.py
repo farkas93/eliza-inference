@@ -41,12 +41,11 @@ class ElizaTUI(App):
                     pass
         yield Footer()
 
-
-
     def on_mount(self) -> None:
         """Initialize the widgets with data on startup."""
         self.query_one("#service_table", ServiceTable).update_data(list(self.stack.services.values()))
         self.query_one("#profile_list", ProfileList).update_data(list(self.stack.profiles.values()))
+        self.query_one("#service_table").focus()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Handle profile selection from ProfileList."""
@@ -59,9 +58,11 @@ class ElizaTUI(App):
 
     def action_switch_services(self) -> None:
         self.query_one(TabbedContent).active = "services_tab"
+        self.query_one("#service_table").focus()
 
     def action_switch_profiles(self) -> None:
         self.query_one(TabbedContent).active = "profiles_tab"
+        self.query_one("#profile_list").focus()
 
     def action_start_service(self) -> None:
         if self.query_one(TabbedContent).active != "services_tab":
