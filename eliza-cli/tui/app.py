@@ -37,8 +37,11 @@ class ElizaTUI(App):
                         yield ServiceTable(id="service_table")
                     with TabPane("Profiles", id="profiles_tab"):
                         yield ProfileList(id="profile_list")
-                with ProfileInspector(id="profile_inspector")
+                with ProfileInspector(id="profile_inspector"):
+                    pass
         yield Footer()
+
+
 
     def on_mount(self) -> None:
         """Initialize the widgets with data on startup."""
