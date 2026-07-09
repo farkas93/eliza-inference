@@ -116,23 +116,29 @@ def transcribe_wav(wav_bytes: bytes) -> dict[str, Any]:
         data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"STT request failed: {exc}") from exc
 
 
 def synthesize_text(text: str) -> tuple[bytes, str]:
     tts_base_url = _tts_base_url()
     tts_model = _tts_model()
     tts_voice = _tts_voice()
-    return _post_json(
-        f"{tts_base_url}/audio/speech",
-        {
-            "model": tts_model,
-            "voice": tts_voice,
-            "input": text,
-            "response_format": "wav",
-        },
-    )
+    try:
+        return _post_json(
+            f"{tts_base_url}/audio/speech",
+            {
+                "model": tts_model,
+                "voice": tts_voice,
+                "input": text,
+                "response_format": "wav",
+            },
+        )
+    except Exception as exc:
+        raise RuntimeError(f"TTS request failed: {exc}") from exc
 
 
 def generate_assistant_text(user_text: str) -> str:
@@ -149,7 +155,10 @@ def generate_assistant_text(user_text: str) -> str:
         "temperature": 0.2,
         "max_tokens": 120,
     }
-    body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
+    try:
+        body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
+    except Exception as exc:
+        raise RuntimeError(f"LLM request failed: {exc}") from exc
     result = json.loads(body.decode("utf-8"))
     choices = result.get("choices") or []
     if not choices:
