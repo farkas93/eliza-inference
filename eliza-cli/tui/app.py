@@ -49,7 +49,7 @@ class ElizaTUI(App):
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Handle profile selection from ProfileList."""
-        if event.sub_path == "profile_list":
+        if event.control.id == "profile_list":
             sanitized_id = event.item.id
             for profile in self.stack.profiles.values():
                 if profile.name.replace("/", "_") == sanitized_id:
