@@ -1,14 +1,14 @@
 # Eliza Medium
 
-`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is llama.cpp with openPangu 2.0 Flash GGUF.
+`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is llama.cpp with Qwen3.6 35B A3B GGUF.
 
-The default llama.cpp profile uses `openPangu-2.0-Flash-ik_llama-Q4_K_M.gguf`.
+The default llama.cpp profile uses `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf`.
 
 ## Profiles
 
 | Profile | Runtime | Context | Use |
 | --- | --- | ---: | --- |
-| `medium/openpangu-2_0-flash-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
+| `medium/openpangu-2_0-flash-q4-llamacpp-256k` | llama.cpp | `262144` | Alternative openPangu profile |
 | `medium/openpangu-2_0-flash-q4-llamacpp-512k` | llama.cpp | `524288` | Max-context profile (capacity test) |
 | `medium/openpangu-2_0-flash-q4-llamacpp-20k` | llama.cpp | `20480` | Conservative stability fallback |
 | `medium/qwen3_6-27b-q4-llamacpp-32k` | llama.cpp | `32768` | Default compatibility profile |
@@ -22,18 +22,24 @@ The default llama.cpp profile uses `openPangu-2.0-Flash-ik_llama-Q4_K_M.gguf`.
 | `medium/qwen3_6-27b-fp8-vllm-128k` | vLLM | `131072` | vLLM long-context baseline |
 | `medium/qwen3_6-27b-fp8-vllm-256k` | vLLM | `262144` | vLLM 256K target |
 | `medium/qwen3_6-27b-fp8-vllm-256k-kvfp8` | vLLM | `262144` | vLLM KV fp8 comparison |
-| `medium/qwen3_6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Qwen3.6 35B A3B long-context profile |
+| `medium/qwen3_6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
 | `medium/qwen3_6-27b-fp8-vllm-256k-native` | vLLM | `262144` | vLLM native max-context profile |
 
 ## Start
 
 ```bash
-./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
-./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
-./scripts/smoke-test eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/download-models eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+./scripts/start eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
 ```
 
-Start with `medium/openpangu-2_0-flash-q4-llamacpp-256k`. If that works, run the max-context sweep.
+Start with `medium/qwen3_6-35b-a3b-q4-llamacpp-256k`. If that works, run a memory-footprint check:
+
+```bash
+./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --context-tokens-list 32768,65536,131072,196608,262144
+```
+
+openPangu alternative profile and max-context sweep:
 
 Max-context sweep for openPangu:
 

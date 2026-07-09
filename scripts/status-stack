@@ -7,6 +7,7 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
 CONFIG_PATH="$ROOT_DIR/configs/eliza-stack.toml"
+SHOW_CONFIG="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -14,8 +15,12 @@ while [[ $# -gt 0 ]]; do
       CONFIG_PATH="$ROOT_DIR/${2:-}"
       shift 2
       ;;
+    --show-config)
+      SHOW_CONFIG="true"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: ./scripts/status-stack [--config configs/eliza-stack.toml]"
+      echo "Usage: ./scripts/status-stack [--config configs/eliza-stack.toml] [--show-config]"
       exit 0
       ;;
     *)
@@ -37,28 +42,89 @@ stack_config() {
   fi
 }
 
-printf '%-16s %-42s %-8s %s\n' "SERVICE" "PROFILE" "STATUS" "HEALTH"
+live_model_from_url() {
+  local models_url="$1"
+  local body model_id
+
+  body="$(curl -fsS "$models_url" 2>/dev/null || true)"
+  if [[ -z "$body" ]]; then
+    return 1
+  fi
+
+  model_id="$(printf '%s' "$body" | tr '\n' ' ' | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  if [[ -z "$model_id" ]]; then
+    return 1
+  fi
+
+  printf '%s\n' "$model_id"
+  return 0
+}
+
+declare -A SERVICE_BASE_URL
+declare -A SERVICE_MODEL_PROFILE
+declare -A SERVICE_MODEL_ACTUAL
+while IFS=$'\t' read -r _model_name model_service model_profile model_actual model_base_url; do
+  [[ -z "$model_service" ]] && continue
+  if [[ -z "${SERVICE_BASE_URL[$model_service]:-}" && -n "$model_base_url" ]]; then
+    SERVICE_BASE_URL["$model_service"]="$model_base_url"
+  fi
+  if [[ "$SHOW_CONFIG" == "true" ]]; then
+    SERVICE_MODEL_PROFILE["$model_service"]="$model_profile"
+    SERVICE_MODEL_ACTUAL["$model_service"]="$model_actual"
+  fi
+done < <(stack_config models --config "$CONFIG_PATH")
+
+if [[ "$SHOW_CONFIG" == "true" ]]; then
+  printf '%-16s %-8s %-6s %-38s %-42s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL" "CONFIG_PROFILE"
+else
+  printf '%-16s %-8s %-6s %s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL"
+fi
+
 while IFS=$'\t' read -r service profile health_url; do
   [[ -z "$service" ]] && continue
   session="$service"
   if [[ "$service" != eliza-* ]]; then
     session="eliza-$service"
   fi
+
+  tmux_running="false"
   if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session" >/dev/null 2>&1; then
+    tmux_running="true"
+  fi
+
+  health="-"
+  if [[ -n "$health_url" ]] && curl -fsS "$health_url" >/dev/null 2>&1; then
+    health="ok"
+  fi
+
+  if [[ "$tmux_running" == "true" || "$health" == "ok" ]]; then
     status="running"
   else
     status="stopped"
   fi
-  if [[ -n "$health_url" ]] && curl -fsS "$health_url" >/dev/null 2>&1; then
-    health="ok"
-  else
-    health="-"
+
+  live_model="-"
+  base_url="${SERVICE_BASE_URL[$service]:-}"
+  if [[ "$health" == "ok" && -n "$base_url" ]]; then
+    models_url="${base_url%/}/models"
+    live_model="$(live_model_from_url "$models_url" || true)"
+    if [[ -z "$live_model" ]]; then
+      live_model="unavailable"
+    fi
   fi
-  printf '%-16s %-42s %-8s %s\n' "$service" "$profile" "$status" "$health"
+
+  if [[ "$SHOW_CONFIG" == "true" ]]; then
+    config_profile="${SERVICE_MODEL_PROFILE[$service]:-$profile}"
+    printf '%-16s %-8s %-6s %-38s %-42s\n' "$service" "$status" "$health" "$live_model" "$config_profile"
+  else
+    printf '%-16s %-8s %-6s %s\n' "$service" "$status" "$health" "$live_model"
+  fi
 done < <(stack_config services --config "$CONFIG_PATH")
 
-echo
-echo "Models:"
-stack_config models --config "$CONFIG_PATH" | while IFS=$'\t' read -r name service profile actual base_url; do
-  printf '  %-13s -> %-12s %-38s %s\n' "$name" "$service" "$actual" "$base_url"
-done
+if [[ "$SHOW_CONFIG" == "true" ]]; then
+  echo
+  echo "Configured model mappings:"
+  stack_config models --config "$CONFIG_PATH" | while IFS=$'\t' read -r name service configured_profile actual base_url; do
+    printf '  %-13s -> %-12s %-38s %s (%s)\n' "$name" "$service" "$actual" "$base_url" "$configured_profile"
+  done
+fi
