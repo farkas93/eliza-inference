@@ -1,13 +1,15 @@
 # Vocode Pipeline
 
-The intended Vocode integration is service-oriented. Vocode should orchestrate HTTP calls to the independently hosted STT, LLM, and TTS services.
+The local voice path is service-oriented. `vocode-bridge` orchestrates HTTP calls to independently hosted STT, LLM, and TTS services.
 
 ```text
-Vocode microphone input
+Browser microphone input
+  -> vocode-bridge websocket
   -> STT service (:8011)
   -> eliza-small service (:8002)
   -> TTS service (:8012)
-  -> Vocode speaker output
+  -> vocode-bridge websocket response
+  -> Browser speaker output
 ```
 
 ## Local URLs
@@ -26,9 +28,9 @@ ELIZA_SMALL_BASE_URL="http://dgx-spark:8002/v1"
 TTS_BASE_URL="http://dgx-spark:8012/v1"
 ```
 
-## Adapter Strategy
+## API Contract
 
-Use OpenAI-compatible Vocode adapters where possible. If Vocode does not expose base URLs cleanly for STT or TTS, add thin custom adapters that call:
+All three upstream services use OpenAI-compatible endpoints:
 
 ```text
 POST /v1/audio/transcriptions
@@ -36,9 +38,9 @@ POST /v1/chat/completions
 POST /v1/audio/speech
 ```
 
-Start with utterance-level STT and response-level TTS. Add streaming and barge-in after the separate services are stable.
+Current bridge behavior is utterance-level STT and response-level TTS. Streaming/barge-in can be added after stability.
 
-For the Vocode experiment, see `docs/vocode-bridge.md`. The first bridge milestone validates WebSocket audio transport and hosted STT/TTS before committing to deeper Vocode internals.
+For bridge protocol details and smoke tests, see `docs/vocode-bridge.md`.
 
 ## Full Pipeline Smoke Test
 

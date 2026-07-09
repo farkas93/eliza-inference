@@ -1,32 +1,41 @@
 # Vocode Bridge
 
-`vocode-bridge` is a bounded experiment for validating whether browser-provided audio can be routed through a server-side voice bridge before integrating deeper Vocode internals.
-
-The current bridge does not install or import the `vocode` package. It intentionally validates the WebSocket transport and hosted STT/TTS endpoint contract first. Current Vocode releases constrain `websockets` below 13, so real Vocode `StreamingConversation` integration should be added only after this bridge contract proves useful.
-
-The current implementation intentionally starts with the bridge contract and the hosted STT/TTS endpoints:
+`vocode-bridge` is a WebSocket bridge that orchestrates a full local voice turn using hosted services:
 
 ```text
 Browser or test client
   -> WebSocket PCM16 chunks
   -> vocode-bridge
   -> STT endpoint (:8011)
-  -> transcript event
-
-Client text
-  -> vocode-bridge
+  -> eliza-small chat endpoint (:8002)
   -> TTS endpoint (:8012)
-  -> audio event
+  -> transcript + assistant text + assistant audio events
 ```
 
-This lets us validate the transport protocol independently before deciding whether Vocode should own endpointing/turn-taking internally.
+The bridge still does not import the `vocode` Python package. This keeps dependencies stable while validating the complete local `STT -> LLM -> TTS` path.
+
+## Environment
+
+Profile: `configs/profiles/vocode/bridge-local.env`
+
+```bash
+STT_BASE_URL=http://127.0.0.1:8011/v1
+STT_MODEL=whisper-small
+ELIZA_SMALL_BASE_URL=http://127.0.0.1:8002/v1
+ELIZA_SMALL_MODEL=gemma-4-e2b-it-q4-k-m
+TTS_BASE_URL=http://127.0.0.1:8012/v1
+TTS_MODEL=piper-lessac-medium
+TTS_VOICE=lessac
+VOICE_SYSTEM_PROMPT="You are a concise local voice assistant. Answer in one short sentence."
+```
 
 ## Start
 
-Make sure STT and TTS are running first:
+Make sure STT, `eliza-small`, and TTS are running first:
 
 ```bash
 ./scripts/start stt --profile stt/faster-whisper-small-cpu
+./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 ./scripts/start tts --profile tts/piper-lessac
 ```
 
@@ -42,14 +51,14 @@ Then start the bridge:
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
-The smoke test:
+The bridge smoke test:
 
 ```text
 1. Connects to ws://127.0.0.1:8021/ws
 2. Requests bridge-side TTS for a prompt sentence
 3. Streams the synthesized WAV back as PCM chunks
 4. Ends audio input
-5. Waits for a transcript
+5. Waits for transcript, assistant text, assistant audio, and turn completion
 ```
 
 It writes the prompt WAV to:
@@ -66,6 +75,7 @@ Client messages:
 { "type": "start", "session_id": "optional-id" }
 { "type": "audio_input", "audio": "base64-pcm16", "mime_type": "audio/pcm;rate=16000" }
 { "type": "audio_input_end" }
+{ "type": "user_text", "text": "Hello" }
 { "type": "synthesize", "text": "Hello." }
 { "type": "stop" }
 ```
@@ -77,11 +87,39 @@ Bridge messages:
 { "type": "started", "session_id": "..." }
 { "type": "audio_received", "bytes": 12345 }
 { "type": "transcript", "text": "...", "is_final": true }
+{ "type": "assistant_text", "text": "..." }
+{ "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
 { "type": "audio", "audio": "base64-wav", "mime_type": "audio/wav" }
+{ "type": "turn_complete" }
 { "type": "closed" }
 { "type": "error", "message": "..." }
 ```
 
-## Next Decision
+`audio` is kept for backward compatibility; new clients should prefer `assistant_audio`.
 
-If this bridge contract is useful, the next step is to replace or augment the transcript path with Vocode `StreamingConversation` adapters. If that becomes more complex than helpful, we can keep this bridge contract and implement a simpler local backend directly.
+## Failure Smoke Tests
+
+Use `--expect-error` to validate upstream failures:
+
+```bash
+# STT failure (bridge started with bad STT_BASE_URL)
+.venvs/vocode/bin/python clients/audio/vocode_bridge_test.py \
+  --url ws://127.0.0.1:8021/ws \
+  --expect-error "STT request failed"
+
+# LLM failure (bridge started with bad ELIZA_SMALL_BASE_URL)
+.venvs/vocode/bin/python clients/audio/vocode_bridge_test.py \
+  --url ws://127.0.0.1:8021/ws \
+  --text-only-turn \
+  --expect-error "LLM request failed"
+
+# TTS failure (bridge started with bad TTS_BASE_URL)
+.venvs/vocode/bin/python clients/audio/vocode_bridge_test.py \
+  --url ws://127.0.0.1:8021/ws \
+  --text-only-turn \
+  --expect-error "TTS request failed"
+```
+
+## Health Endpoint
+
+`GET /health` now reports dependency reachability for STT, `eliza-small`, and TTS via each service's `/v1/models` endpoint. The top-level status becomes `degraded` if any dependency probe fails.

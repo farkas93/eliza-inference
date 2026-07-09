@@ -10,7 +10,7 @@ DGX Spark-first local inference stack exposing `eliza-small` for low-latency voi
 | `eliza-small` | llama.cpp | `unsloth/gemma-4-E2B-it-GGUF` | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
-| `vocode-bridge` | FastAPI WS bridge | STT/TTS transport spike | `8021` |
+| `vocode-bridge` | FastAPI WS bridge | local STT -> eliza-small -> TTS turn orchestration | `8021` |
 
 Services bind to `0.0.0.0` by default for LAN access. Do not expose them directly to the public internet.
 
@@ -84,16 +84,22 @@ vLLM profiles are experimental on GB10 in this repo. To remove the local vLLM en
 ./scripts/cleanup-vllm
 ```
 
-Test the Vocode bridge transport spike:
+Test the local vocode bridge voice turn:
 
 ```bash
 ./scripts/start vocode-bridge --profile vocode/bridge-local
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
+GenieTor local backend smoke test (run GenieTor with `ELIZA_BACKEND=local-vocode` first):
+
+```bash
+.venvs/vocode/bin/python clients/audio/genietor_local_backend_test.py --url ws://127.0.0.1:8080/ws
+```
+
 ## Vocode Pipeline
 
-Vocode should call each local service over HTTP:
+The bridge orchestrates each local service over HTTP:
 
 ```text
 STT:       http://dgx-spark:8011/v1/audio/transcriptions
