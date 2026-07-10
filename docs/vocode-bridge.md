@@ -31,6 +31,10 @@ TTS_BASE_URL=http://127.0.0.1:8012/v1
 TTS_MODEL=piper-lessac-medium
 TTS_VOICE=lessac
 VOICE_SYSTEM_PROMPT="You are a concise local voice assistant. Answer in one short sentence."
+BRIDGE_VAD_ENABLED=true
+BRIDGE_VAD_RMS_THRESHOLD=450
+BRIDGE_VAD_SILENCE_MS=700
+BRIDGE_VAD_MIN_SPEECH_MS=300
 ```
 
 ## Start

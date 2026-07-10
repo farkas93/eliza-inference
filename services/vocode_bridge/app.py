@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 import os
 import re
+import struct
 import urllib.error
 import urllib.request
 import uuid
@@ -59,6 +61,22 @@ def _voice_system_prompt() -> str:
     )
 
 
+def _vad_enabled() -> bool:
+    return os.environ.get("BRIDGE_VAD_ENABLED", "true").lower() not in {"false", "0", "no", "off"}
+
+
+def _vad_rms_threshold() -> float:
+    return float(os.environ.get("BRIDGE_VAD_RMS_THRESHOLD", "450"))
+
+
+def _vad_silence_ms() -> float:
+    return float(os.environ.get("BRIDGE_VAD_SILENCE_MS", "700"))
+
+
+def _vad_min_speech_ms() -> float:
+    return float(os.environ.get("BRIDGE_VAD_MIN_SPEECH_MS", "300"))
+
+
 def _parse_sample_rate(mime_type: str | None, default: int = 16000) -> int:
     if not mime_type:
         return default
@@ -76,6 +94,27 @@ def _pcm16_to_wav(pcm: bytes, sample_rate: int) -> bytes:
         wav.setframerate(sample_rate)
         wav.writeframes(pcm)
     return buffer.getvalue()
+
+
+def _pcm16_rms(pcm: bytes) -> float:
+    if not pcm:
+        return 0.0
+
+    sample_count = len(pcm) // 2
+    if sample_count <= 0:
+        return 0.0
+
+    sum_squares = 0.0
+    for (sample,) in struct.iter_unpack("<h", pcm[: sample_count * 2]):
+        sum_squares += float(sample * sample)
+    return math.sqrt(sum_squares / sample_count)
+
+
+def _pcm_duration_ms(pcm: bytes, sample_rate: int) -> float:
+    if sample_rate <= 0:
+        return 0.0
+    sample_count = len(pcm) / 2.0
+    return (sample_count / float(sample_rate)) * 1000.0
 
 
 def _multipart_body(fields: dict[str, str], file_bytes: bytes, filename: str) -> tuple[bytes, str]:
@@ -309,6 +348,13 @@ class BridgeSession:
     synthesizer: BridgeSynthesizer = field(default_factory=BridgeSynthesizer)
     output_device: BridgeOutputDevice = field(default_factory=BridgeOutputDevice)
     conversation: TurnBasedConversation | None = None
+    vad_enabled: bool = field(default_factory=_vad_enabled)
+    vad_rms_threshold: float = field(default_factory=_vad_rms_threshold)
+    vad_silence_ms: float = field(default_factory=_vad_silence_ms)
+    vad_min_speech_ms: float = field(default_factory=_vad_min_speech_ms)
+    speech_active: bool = False
+    speech_ms: float = 0.0
+    trailing_silence_ms: float = 0.0
 
     def ensure_conversation(self) -> TurnBasedConversation:
         if self.conversation is None:
@@ -323,6 +369,32 @@ class BridgeSession:
 
     def reset_audio(self) -> None:
         self.input_device.start_listening()
+        self.speech_active = False
+        self.speech_ms = 0.0
+        self.trailing_silence_ms = 0.0
+
+    def should_finalize_from_chunk(self, pcm_chunk: bytes) -> bool:
+        if not self.vad_enabled:
+            return False
+
+        chunk_ms = _pcm_duration_ms(pcm_chunk, self.sample_rate)
+        if chunk_ms <= 0:
+            return False
+
+        rms = _pcm16_rms(pcm_chunk)
+        is_voice = rms >= self.vad_rms_threshold
+        if is_voice:
+            self.speech_active = True
+            self.speech_ms += chunk_ms
+            self.trailing_silence_ms = 0.0
+            return False
+
+        if not self.speech_active:
+            return False
+
+        self.speech_ms += chunk_ms
+        self.trailing_silence_ms += chunk_ms
+        return self.speech_ms >= self.vad_min_speech_ms and self.trailing_silence_ms >= self.vad_silence_ms
 
 
 @app.get("/health")
@@ -336,8 +408,14 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok" if all_ok else "degraded",
         "service": "vocode-bridge",
-        "mode": "vocode-turn-based-bridge",
+        "mode": "vocode-streaming-bridge" if _vad_enabled() else "vocode-turn-based-bridge",
         "engine": "vocode.turn_based.TurnBasedConversation",
+        "vad": {
+            "enabled": _vad_enabled(),
+            "rms_threshold": _vad_rms_threshold(),
+            "silence_ms": _vad_silence_ms(),
+            "min_speech_ms": _vad_min_speech_ms(),
+        },
         "dependencies": dependencies,
     }
 
@@ -354,6 +432,37 @@ async def _emit_assistant_turn(websocket: WebSocket, assistant_text: str, audio_
     await websocket.send_json({"type": "turn_complete"})
 
 
+async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> None:
+    if not session.input_device.has_audio():
+        await websocket.send_json({"type": "error", "message": "No audio buffered"})
+        return
+
+    session.ensure_conversation().end_speech_and_respond()
+    transcript_text = str(session.transcriber.last_result.get("text", "")).strip()
+    await websocket.send_json(
+        {
+            "type": "transcript",
+            "text": transcript_text,
+            "is_final": True,
+            "language": session.transcriber.last_result.get("language"),
+            "duration": session.transcriber.last_result.get("duration"),
+        }
+    )
+
+    if not transcript_text:
+        await websocket.send_json({"type": "error", "message": "STT returned an empty transcript"})
+        session.reset_audio()
+        return
+
+    await _emit_assistant_turn(
+        websocket,
+        session.agent.last_response,
+        session.output_device.last_audio_bytes,
+        session.synthesizer.last_mime_type,
+    )
+    session.reset_audio()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -364,9 +473,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         {
             "type": "ready",
             "session_id": session.session_id,
-            "mode": "vocode-turn-based-bridge",
+            "mode": "vocode-streaming-bridge" if session.vad_enabled else "vocode-turn-based-bridge",
             "engine": "vocode.turn_based.TurnBasedConversation",
-            "note": "Native Vocode turn-based orchestration over local STT, eliza-small, and TTS services.",
+            "note": "Streaming bridge with endpointing over local STT, eliza-small, and TTS services.",
+            "vad": {
+                "enabled": session.vad_enabled,
+                "rms_threshold": session.vad_rms_threshold,
+                "silence_ms": session.vad_silence_ms,
+                "min_speech_ms": session.vad_min_speech_ms,
+            },
         }
     )
 
@@ -385,39 +500,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 mime_type = str(message.get("mime_type") or message.get("mimeType") or "audio/pcm;rate=16000")
                 session.sample_rate = _parse_sample_rate(mime_type, session.sample_rate)
                 session.input_device.set_sample_rate(session.sample_rate)
+                pcm_chunk = b""
                 if audio_b64:
-                    session.input_device.append_pcm(base64.b64decode(audio_b64))
+                    pcm_chunk = base64.b64decode(audio_b64)
+                    session.input_device.append_pcm(pcm_chunk)
                 await websocket.send_json({"type": "audio_received", "bytes": session.input_device.buffered_bytes()})
 
+                if pcm_chunk and session.should_finalize_from_chunk(pcm_chunk):
+                    await _process_audio_turn(websocket, session)
+
             elif message_type == "audio_input_end":
-                if not session.input_device.has_audio():
-                    await websocket.send_json({"type": "error", "message": "No audio buffered"})
-                    continue
-
-                session.ensure_conversation().end_speech_and_respond()
-                transcript_text = str(session.transcriber.last_result.get("text", "")).strip()
-                await websocket.send_json(
-                    {
-                        "type": "transcript",
-                        "text": transcript_text,
-                        "is_final": True,
-                        "language": session.transcriber.last_result.get("language"),
-                        "duration": session.transcriber.last_result.get("duration"),
-                    }
-                )
-
-                if not transcript_text:
-                    await websocket.send_json({"type": "error", "message": "STT returned an empty transcript"})
-                    session.reset_audio()
-                    continue
-
-                await _emit_assistant_turn(
-                    websocket,
-                    session.agent.last_response,
-                    session.output_device.last_audio_bytes,
-                    session.synthesizer.last_mime_type,
-                )
-                session.reset_audio()
+                await _process_audio_turn(websocket, session)
 
             elif message_type in {"user_text", "user_message"}:
                 user_text = str(message.get("text") or "").strip()
