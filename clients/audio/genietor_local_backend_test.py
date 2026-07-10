@@ -23,33 +23,45 @@ async def main_async() -> int:
     )
     parser.add_argument("--url", default="ws://127.0.0.1:8080/ws")
     parser.add_argument("--text", default="Say hello from the local vocode smoke test.")
-    parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--timeout", type=float, default=60.0)
     args = parser.parse_args()
 
     assistant_text = ""
     got_audio = False
 
     async with websockets.connect(args.url, max_size=16 * 1024 * 1024) as websocket:
-        await websocket.send(json.dumps({"type": "userMessage", "text": args.text}))
-
         deadline = asyncio.get_running_loop().time() + args.timeout
+        saw_connected_banner = False
+
         while asyncio.get_running_loop().time() < deadline:
-            message = await recv_json(websocket, timeout=max(1.0, deadline - asyncio.get_running_loop().time()))
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            message = await recv_json(websocket, timeout=max(1.0, remaining))
             message_type = message.get("type")
+
             if message_type == "agentResponse":
                 text = str(message.get("text") or "").strip()
-                if text and text != "Connected! Ask me anything.":
+                if text == "Connected! Ask me anything.":
+                    saw_connected_banner = True
+                    await websocket.send(json.dumps({"type": "userMessage", "text": args.text}))
+                    continue
+                if text:
                     assistant_text = text
             elif message_type == "audioResponse":
                 got_audio = bool(message.get("audio"))
 
-            if assistant_text and got_audio:
+            if saw_connected_banner and assistant_text and got_audio:
                 break
 
+    if not saw_connected_banner:
+        raise RuntimeError("Did not receive GenieTor session-ready banner before timeout")
     if not assistant_text:
-        raise RuntimeError("Did not receive non-empty assistant text from GenieTor server")
+        raise RuntimeError(
+            "Did not receive non-empty assistant text from GenieTor server before timeout"
+        )
     if not got_audio:
-        raise RuntimeError("Did not receive assistant audio from GenieTor server")
+        raise RuntimeError("Did not receive assistant audio from GenieTor server before timeout")
 
     print(
         json.dumps(
