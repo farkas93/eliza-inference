@@ -29,11 +29,12 @@ class ServiceTable(DataTable):
         services: List[Service],
         selected_service_name: str = "",
         selected_column: int = 0,
+        selected_row_index: int | None = None,
     ) -> None:
         self._ensure_columns()
         self.clear(columns=False)
 
-        target_row = 0 if services else None
+        target_row = None
         for row_index, s in enumerate(services):
             live_profile = s.live_profile_id or "-"
             drift = "YES" if s.drift else "NO"
@@ -50,6 +51,12 @@ class ServiceTable(DataTable):
             if selected_service_name and s.name == selected_service_name:
                 target_row = row_index
 
+        if target_row is None and selected_row_index is not None and services:
+            target_row = min(max(selected_row_index, 0), len(services) - 1)
+
+        if target_row is None and services and self.cursor_row is None:
+            target_row = 0
+
         if target_row is not None:
             bounded_column = min(max(selected_column, 0), 6)
             self.move_cursor(row=target_row, column=bounded_column, animate=False, scroll=False)
@@ -59,7 +66,7 @@ class ServiceTable(DataTable):
         try:
             row_index = self.cursor_row
             if row_index is not None and row_index >= 0:
-                row_data = self.get_row(row_index)
+                row_data = self.get_row_at(row_index)
                 return str(row_data[0])
         except Exception:
             pass

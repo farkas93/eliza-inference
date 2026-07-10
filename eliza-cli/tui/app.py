@@ -38,6 +38,7 @@ class ElizaTUI(App):
         self.monitor = MonitorEngine(root_dir)
         self.stack = self.engine.discover()
         self.active_log_path = None
+        self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -67,16 +68,36 @@ class ElizaTUI(App):
     def _refresh_service_table(self) -> None:
         service_table = self.query_one("#service_table", ServiceTable)
         selected_service_name = service_table.get_selected_service_name()
-        selected_column = service_table.cursor_column or 0
+        selected_column = service_table.cursor_column if service_table.cursor_column is not None else 0
+        selected_row_index = service_table.cursor_row
+        scroll_y = service_table.scroll_y
         service_table.update_data(
             list(self.stack.services.values()),
             selected_service_name=selected_service_name,
             selected_column=selected_column,
+            selected_row_index=selected_row_index,
+        )
+        service_table.scroll_to(y=scroll_y, animate=False, immediate=True)
+        self._service_snapshot = self._current_service_snapshot()
+
+    def _current_service_snapshot(self) -> tuple[tuple[str, str, str, str, str, str, bool], ...]:
+        return tuple(
+            (
+                service.name,
+                service.status,
+                service.health,
+                service.profile_id,
+                service.live_profile_id or "-",
+                service.live_model,
+                service.drift,
+            )
+            for service in self.stack.services.values()
         )
 
     def refresh_stack_state(self) -> None:
         self.stack = self.engine.discover()
-        self._refresh_service_table()
+        if self._current_service_snapshot() != self._service_snapshot:
+            self._refresh_service_table()
 
     def update_monitor(self) -> None:
         """Periodically update the monitor display."""
