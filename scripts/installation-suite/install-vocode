@@ -42,11 +42,39 @@ if [[ "$REINSTALL" == "true" && -d "$VOCODE_VENV" ]]; then
   rm -rf "$VOCODE_VENV"
 fi
 
-ensure_venv "$VOCODE_VENV"
+ensure_vocode_venv() {
+  if [[ -x "$VOCODE_VENV/bin/python" ]]; then
+    return 0
+  fi
+
+  local preferred_python="${VOCODE_PYTHON_VERSION:-3.12}"
+  if uv venv --python "$preferred_python" "$VOCODE_VENV" >/dev/null 2>&1; then
+    echo "Created vocode venv with Python $preferred_python at $VOCODE_VENV"
+    return 0
+  fi
+
+  echo "[warn] Could not create vocode venv with Python $preferred_python; falling back to uv default Python." >&2
+  uv venv "$VOCODE_VENV"
+}
+
+ensure_vocode_venv
+
+"$VOCODE_VENV/bin/python" - <<'PY'
+import sys
+
+if sys.version_info[:2] > (3, 12):
+    raise SystemExit(
+        "vocode setup currently requires Python <= 3.12 for prebuilt dependency wheels. "
+        "Set VOCODE_PYTHON_VERSION=3.12 and rerun ./scripts/setup vocode --reinstall."
+    )
+
+print(f"Using Python {sys.version.split()[0]} environment at: {sys.executable}")
+PY
+
 uv pip install --python "$VOCODE_VENV/bin/python" -U \
-  "fastapi>=0.115.0" \
-  "uvicorn[standard]>=0.34.0" \
-  "websockets>=14.0" \
+  "fastapi>=0.111.0,<0.112.0" \
+  "uvicorn[standard]>=0.30.0,<0.31.0" \
+  "websockets>=12.0,<13.0" \
   "pydub>=0.25.1" \
   "vocode>=0.1.114a2"
 
@@ -67,4 +95,7 @@ For development dependency changes, run:
   ./scripts/setup vocode --reinstall
 
 The current vocode-bridge service uses Vocode turn-based orchestration over local STT, LLM, and TTS endpoints.
+The `fastapi` package is intentionally pinned to `<0.112` to satisfy current `vocode` constraints.
+The `uvicorn` package is intentionally pinned to `<0.31` to satisfy current `vocode` constraints.
+The `websockets` package is intentionally pinned to `<13` to satisfy current `vocode` constraints.
 EOF
