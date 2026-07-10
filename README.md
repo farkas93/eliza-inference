@@ -28,9 +28,11 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 ## Quick Start
 
 ```bash
+./scripts/install-cli
 ./scripts/doctor
 ./scripts/setup prerequisites
 ./scripts/setup llamacpp
+./scripts/setup sglang
 ./scripts/setup stt --profile stt/faster-whisper-small-cpu
 ./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/setup vocode
@@ -60,6 +62,16 @@ Start `eliza-medium` separately:
 ./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
 ./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
 ./scripts/smoke-test eliza-medium
+```
+
+Compare `eliza-medium` runtimes (llama.cpp vs SGLang):
+
+```bash
+./scripts/start eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+
+./scripts/start eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
+./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
 ```
 
 ## Profiles
@@ -100,6 +112,12 @@ Test the local vocode bridge voice turn:
 ```bash
 ./scripts/start vocode-bridge --profile vocode/bridge-local
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
+```
+
+Reinstall vocode bridge dependencies after local development changes:
+
+```bash
+./scripts/setup vocode --reinstall
 ```
 
 GenieTor local backend smoke test (run GenieTor with `ELIZA_BACKEND=local-vocode` first):

@@ -8,6 +8,9 @@ case "${BACKEND:-llamacpp}" in
   vllm)
     exec "$(dirname "$0")/start-vllm.sh"
     ;;
+  sglang)
+    exec "$(dirname "$0")/start-sglang.sh"
+    ;;
   *)
     echo "Unsupported eliza-medium backend: ${BACKEND:-}" >&2
     exit 2

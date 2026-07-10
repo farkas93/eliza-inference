@@ -61,14 +61,18 @@ Stop everything in reverse order:
 ## Installation
 
 ```bash
+./scripts/install-cli
 ./scripts/setup prerequisites
 ./scripts/setup llamacpp
+./scripts/setup sglang
 ./scripts/setup stt --profile stt/faster-whisper-small-cpu
 ./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/setup vocode
 ```
 
-`scripts/install` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
+`scripts/install-cli` installs a PATH-based `eliza-cli` launcher under `~/.local/bin` and adds `~/.local/bin` to `.bashrc`/`.zshrc` if needed.
+
+`scripts/setup prerequisites` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
 
 Runtime-heavy services use isolated environments so installers cannot prune or break each other:
 
@@ -77,6 +81,7 @@ Runtime-heavy services use isolated environments so installers cannot prune or b
 .venvs/stt     # FastAPI + faster-whisper
 .venvs/tts     # FastAPI + piper-tts
 .venvs/vllm    # vLLM + Torch
+.venvs/sglang  # SGLang + Torch
 .venvs/vocode  # FastAPI + websocket bridge transport dependencies
 ```
 
@@ -96,6 +101,8 @@ If the build succeeds and `llama-server` is not on `PATH`, add the printed `LLAM
 
 `install-vllm` installs vLLM into `.venvs/vllm`, verifies package versions, imports Torch and vLLM, checks `torch.cuda.is_available()`, prints the detected CUDA device, and fails clearly if Torch cannot see the GPU. vLLM is currently experimental on GB10 in this repo; llama.cpp is the default runtime path.
 
+`install-sglang` installs SGLang into `.venvs/sglang`, verifies package imports, checks CUDA visibility from Torch, and confirms SGLang CLI/module invocation.
+
 To clean up vLLM attempts and return to the llama.cpp-first setup:
 
 ```bash
@@ -111,9 +118,24 @@ Useful options:
 ./scripts/setup vllm --torch-backend auto
 ```
 
+Useful SGLang options:
+
+```bash
+./scripts/setup sglang
+./scripts/setup sglang --no-install
+./scripts/setup sglang --package sglang
+./scripts/setup sglang --torch-backend auto
+```
+
 `install-stt` installs FastAPI and faster-whisper into `.venvs/stt`, downloads the selected profile model, and verifies imports.
 
 `install-tts` installs and verifies the selected TTS backend in `.venvs/tts`. The default supported backend is Piper through the `piper-tts` Python package. It downloads the selected voice profile, verifies the voice files, synthesizes `tmp/piper-install-test.wav`, and prints the `PIPER_BIN` setting to add to `.env` if needed.
+
+For bridge dependency refreshes during active development, reinstall the vocode venv in one command:
+
+```bash
+./scripts/setup vocode --reinstall
+```
 
 Useful options:
 

@@ -39,6 +39,12 @@ Make sure STT, `eliza-small`, and TTS are running first:
 ./scripts/start tts --profile tts/piper-lessac
 ```
 
+If bridge dependencies changed locally, rebuild the bridge environment first:
+
+```bash
+./scripts/setup vocode --reinstall
+```
+
 Then start the bridge:
 
 ```bash

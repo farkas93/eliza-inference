@@ -11,6 +11,7 @@ Usage: ./scripts/setup <command> [args]
 Commands:
   prerequisites           Install base prerequisites and .venvs/base
   llamacpp [options]      Build/install llama.cpp CUDA binaries
+  sglang [options]        Install SGLang runtime and verify GPU stack
   stt [options]           Install STT runtime and verify profile
   tts [options]           Install TTS runtime and verify profile
   vllm [options]          Install vLLM runtime and verify GPU stack
@@ -20,6 +21,7 @@ Commands:
 Examples:
   ./scripts/setup prerequisites
   ./scripts/setup llamacpp --clean
+  ./scripts/setup sglang
   ./scripts/setup stt --profile stt/faster-whisper-small-cpu
   ./scripts/setup tts --profile tts/piper-lessac
   ./scripts/setup clean-system
@@ -46,6 +48,10 @@ case "$1" in
   llamacpp)
     shift
     exec "$SUITE_DIR/install-llamacpp" "$@"
+    ;;
+  sglang)
+    shift
+    exec "$SUITE_DIR/install-sglang" "$@"
     ;;
   stt)
     shift
