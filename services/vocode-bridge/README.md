@@ -1,13 +1,14 @@
 # vocode-bridge
 
-WebSocket bridge for local voice turns using native Vocode turn-based orchestration.
+WebSocket bridge for local voice turns using a streaming-first bridge contract.
 
 Current protocol supports:
 
-- PCM16 audio chunks over WebSocket
+- continuous PCM16 audio chunks over WebSocket
 - final transcript through hosted STT
 - assistant text through hosted `eliza-small`
 - assistant audio through hosted TTS
+- compatibility fallback `audio_input_end` for forced end-of-turn
 
 Start:
 
@@ -16,4 +17,4 @@ Start:
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
-The bridge runtime uses `vocode.turn_based.TurnBasedConversation` with local HTTP adapters for STT, LLM, and TTS.
+The bridge runtime maintains compatibility with existing turn-based clients while exposing a streaming-ready contract for GenieTor.

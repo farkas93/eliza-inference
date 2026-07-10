@@ -1,6 +1,6 @@
 # Vocode Bridge
 
-`vocode-bridge` is a WebSocket bridge that orchestrates a full local voice turn using hosted services:
+`vocode-bridge` is a WebSocket bridge that orchestrates local voice conversations using hosted services:
 
 ```text
 Browser or test client
@@ -12,7 +12,11 @@ Browser or test client
   -> transcript + assistant text + assistant audio events
 ```
 
-The bridge now uses `vocode.turn_based.TurnBasedConversation` with local HTTP adapters for STT, `eliza-small`, and TTS.
+The bridge now uses a streaming-first WebSocket contract.
+
+- Clients continuously send `audio_input` chunks.
+- The bridge can run endpointing from buffered silence and does not require a client-side explicit turn-end message.
+- `audio_input_end` is still accepted as a compatibility fallback and forces immediate end-of-turn processing.
 
 ## Environment
 
@@ -95,12 +99,20 @@ Bridge messages:
 { "type": "transcript", "text": "...", "is_final": true }
 { "type": "assistant_text", "text": "..." }
 { "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
+{ "type": "assistant_interrupted" }
 { "type": "turn_complete" }
 { "type": "closed" }
 { "type": "error", "message": "..." }
 ```
 
 `synthesize` requests still return `{ "type": "audio", ... }` for prompt-generation utilities.
+
+Contract notes:
+
+- `audio_input` should be sent continuously while mic capture is active.
+- `audio_input_end` is optional and treated as compatibility fallback.
+- Clients should be ready for `assistant_interrupted` when user speech arrives mid-response.
+- `turn_complete` is emitted when the bridge decides the turn is finished.
 
 ## Failure Smoke Tests
 
@@ -131,5 +143,4 @@ Use `--expect-error` to validate upstream failures:
 
 The health payload includes:
 
-- `mode: "vocode-turn-based-bridge"`
-- `engine: "vocode.turn_based.TurnBasedConversation"`
+- `mode` indicates whether turn-based fallback or streaming mode is active.

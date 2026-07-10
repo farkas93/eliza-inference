@@ -1,6 +1,6 @@
 # Vocode Pipeline
 
-The local voice path is service-oriented. `vocode-bridge` uses Vocode turn-based orchestration while calling independently hosted STT, LLM, and TTS services.
+The local voice path is service-oriented. `vocode-bridge` uses a streaming WebSocket contract while calling independently hosted STT, LLM, and TTS services.
 
 ```text
 Browser microphone input
@@ -38,7 +38,7 @@ POST /v1/chat/completions
 POST /v1/audio/speech
 ```
 
-Current bridge behavior is utterance-level STT and response-level TTS via `vocode.turn_based.TurnBasedConversation`. Streaming/barge-in can be added after the bridge moves to Vocode's streaming conversation layer.
+Current bridge behavior supports continuous incoming audio chunks with bridge-controlled endpointing. `audio_input_end` remains supported as a compatibility fallback for older clients.
 
 For bridge protocol details and smoke tests, see `docs/vocode-bridge.md`.
 
