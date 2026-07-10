@@ -60,24 +60,55 @@ live_model_from_url() {
   return 0
 }
 
+profile_model_file() {
+  local profile="$1"
+  local profile_path="$ROOT_DIR/configs/profiles/$profile.env"
+  local line value
+
+  if [[ ! -f "$profile_path" ]]; then
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    [[ "$line" == \#* ]] && continue
+    if [[ "$line" == MODEL_FILE=* ]]; then
+      value="${line#MODEL_FILE=}"
+      value="${value#\"}"
+      value="${value%\"}"
+      value="${value#\'}"
+      value="${value%\'}"
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done < "$profile_path"
+
+  return 1
+}
+
 declare -A SERVICE_BASE_URL
 declare -A SERVICE_MODEL_PROFILE
 declare -A SERVICE_MODEL_ACTUAL
+declare -A SERVICE_RUNTIME_PROFILE
 while IFS=$'\t' read -r _model_name model_service model_profile model_actual model_base_url; do
   [[ -z "$model_service" ]] && continue
   if [[ -z "${SERVICE_BASE_URL[$model_service]:-}" && -n "$model_base_url" ]]; then
     SERVICE_BASE_URL["$model_service"]="$model_base_url"
   fi
-  if [[ "$SHOW_CONFIG" == "true" ]]; then
-    SERVICE_MODEL_PROFILE["$model_service"]="$model_profile"
-    SERVICE_MODEL_ACTUAL["$model_service"]="$model_actual"
-  fi
+  SERVICE_MODEL_PROFILE["$model_service"]="$model_profile"
+  SERVICE_MODEL_ACTUAL["$model_service"]="$model_actual"
 done < <(stack_config models --config "$CONFIG_PATH")
 
+while IFS=$'\t' read -r runtime_service runtime_profile; do
+  [[ -z "$runtime_service" ]] && continue
+  [[ -z "$runtime_profile" ]] && continue
+  SERVICE_RUNTIME_PROFILE["$runtime_service"]="$runtime_profile"
+done < <(runtime_state all --state "$RUNTIME_STATE_FILE" 2>/dev/null || true)
+
 if [[ "$SHOW_CONFIG" == "true" ]]; then
-  printf '%-16s %-8s %-6s %-38s %-42s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL" "CONFIG_PROFILE"
+  printf '%-16s %-8s %-6s %-38s %-42s %-42s %-5s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL" "CONFIG_PROFILE" "LIVE_PROFILE" "DRIFT"
 else
-  printf '%-16s %-8s %-6s %s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL"
+  printf '%-16s %-8s %-6s %-38s %-42s %-5s\n' "SERVICE" "STATUS" "HEALTH" "LIVE_MODEL" "LIVE_PROFILE" "DRIFT"
 fi
 
 while IFS=$'\t' read -r service profile health_url; do
@@ -104,6 +135,8 @@ while IFS=$'\t' read -r service profile health_url; do
   fi
 
   live_model="-"
+  config_profile="${SERVICE_MODEL_PROFILE[$service]:-$profile}"
+  live_profile="${SERVICE_RUNTIME_PROFILE[$service]:--}"
   base_url="${SERVICE_BASE_URL[$service]:-}"
   if [[ "$health" == "ok" && -n "$base_url" ]]; then
     models_url="${base_url%/}/models"
@@ -113,11 +146,22 @@ while IFS=$'\t' read -r service profile health_url; do
     fi
   fi
 
+  drift="no"
+  if [[ "$live_profile" != "-" ]]; then
+    if [[ "$live_profile" != "$config_profile" ]]; then
+      drift="yes"
+    fi
+  elif [[ "$live_model" != "-" && "$live_model" != "unavailable" ]]; then
+    configured_model_file="$(profile_model_file "$config_profile" || true)"
+    if [[ -n "$configured_model_file" && "$configured_model_file" != "$live_model" ]]; then
+      drift="yes"
+    fi
+  fi
+
   if [[ "$SHOW_CONFIG" == "true" ]]; then
-    config_profile="${SERVICE_MODEL_PROFILE[$service]:-$profile}"
-    printf '%-16s %-8s %-6s %-38s %-42s\n' "$service" "$status" "$health" "$live_model" "$config_profile"
+    printf '%-16s %-8s %-6s %-38s %-42s %-42s %-5s\n' "$service" "$status" "$health" "$live_model" "$config_profile" "$live_profile" "$drift"
   else
-    printf '%-16s %-8s %-6s %s\n' "$service" "$status" "$health" "$live_model"
+    printf '%-16s %-8s %-6s %-38s %-42s %-5s\n' "$service" "$status" "$health" "$live_model" "$live_profile" "$drift"
   fi
 done < <(stack_config services --config "$CONFIG_PATH")
 
@@ -128,3 +172,9 @@ if [[ "$SHOW_CONFIG" == "true" ]]; then
     printf '  %-13s -> %-12s %-38s %s (%s)\n' "$name" "$service" "$actual" "$base_url" "$configured_profile"
   done
 fi
+
+echo
+echo "Legend:"
+echo "  LIVE_PROFILE: profile recorded at start/restart time (from .runtime state)."
+echo "  DRIFT=yes when LIVE_PROFILE differs from CONFIG_PROFILE;"
+echo "             otherwise for model services when LIVE_MODEL differs from configured MODEL_FILE."

@@ -36,6 +36,11 @@ class Service:
     purpose: Optional[str] = None
     public_name: Optional[str] = None
     actual_model: Optional[str] = None
+    status: str = "unknown"
+    health: str = "-"
+    live_profile_id: Optional[str] = None
+    live_model: str = "-"
+    drift: bool = False
 
 @dataclass
 class Stack:

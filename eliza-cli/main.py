@@ -24,11 +24,16 @@ def main():
         stack = engine.discover()
         print(f"\n[+] Stack Name: {stack.name}")
         print("-" * 40)
-        print(f"{'SERVICE':<15} | {'ENABLED':<8} | {'PROFILE':<40}")
+        print(
+            f"{'SERVICE':<15} | {'STATUS':<8} | {'HEALTH':<6} | {'CONFIG_PROFILE':<40} | {'LIVE_PROFILE':<40} | {'DRIFT':<5}"
+        )
         print("-" * 40)
         for name, service in stack.services.items():
-            status = "YES" if service.enabled else "NO"
-            print(f"{name:<15} | {status:<8} | {service.profile_id:<40}")
+            live_profile = service.live_profile_id or "-"
+            drift = "yes" if service.drift else "no"
+            print(
+                f"{name:<15} | {service.status:<8} | {service.health:<6} | {service.profile_id:<40} | {live_profile:<40} | {drift:<5}"
+            )
         
         if stack.profiles:
             print(f"\n[+] Total Profiles Found: {len(stack.profiles)}")

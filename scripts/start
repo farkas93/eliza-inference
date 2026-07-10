@@ -23,5 +23,7 @@ fi
 
 tmux new-session -d -s "$SESSION_NAME" "bash -lc 'cd \"$ROOT_DIR\" && set -a; [[ -f \"$ROOT_DIR/.env\" ]] && source \"$ROOT_DIR/.env\"; source \"$PROFILE_PATH\"; set +a; exec \"$SERVICE_DIR/start.sh\" 2>&1 | tee -a \"$LOG_FILE\"'"
 
+runtime_state set --state "$RUNTIME_STATE_FILE" --service "$SERVICE" --profile "$PROFILE" || true
+
 echo "Started $SERVICE with profile $PROFILE in tmux session $SESSION_NAME"
 echo "Logs: $LOG_FILE"

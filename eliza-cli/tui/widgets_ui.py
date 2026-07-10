@@ -8,10 +8,27 @@ class ServiceTable(DataTable):
     """A table showing the current services in the stack."""
     def update_data(self, services: List[Service]):
         self.clear()
-        self.add_columns("Service", "Enabled", "Profile")
+        self.add_columns(
+            "Service",
+            "Status",
+            "Health",
+            "Configured Profile",
+            "Live Profile",
+            "Live Model",
+            "Drift",
+        )
         for s in services:
-            status = "YES" if s.enabled else "NO"
-            self.add_row(s.name, status, s.profile_id)
+            live_profile = s.live_profile_id or "-"
+            drift = "YES" if s.drift else "NO"
+            self.add_row(
+                s.name,
+                s.status,
+                s.health,
+                s.profile_id,
+                live_profile,
+                s.live_model,
+                drift,
+            )
 
     def get_selected_service_name(self) -> str:
         """Returns the name of the selected service from the table."""
@@ -27,10 +44,7 @@ class ServiceTable(DataTable):
 class ProfileList(ListView):
     """A list of available profiles for easy selection."""
     def update_data(self, profiles: List[Profile]):
-        # Clear existing items
-        for child in self.query(ListItem):
-            child.remove()
-            
+        self.clear()
         for p in profiles:
             # Sanitize id by replacing slashes with underscores
             safe_id = p.name.replace("/", "_")

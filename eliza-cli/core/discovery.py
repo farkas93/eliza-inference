@@ -2,10 +2,12 @@ import pathlib
 import tomllib
 from typing import Dict, List
 from .models import Profile, Service, Stack
+from .runtime_probe import RuntimeProbe
 
 class DiscoveryEngine:
     def __init__(self, root_dir: pathlib.Path):
         self.root_dir = root_dir
+        self.runtime_probe = RuntimeProbe(root_dir)
 
     def discover(self) -> Stack:
         stack_path = self.root_dir / "configs" / "eliza-stack.toml"
@@ -43,6 +45,8 @@ class DiscoveryEngine:
                 base_url=model_info.get("base_url")
             )
             stack.services[name] = service
+
+        stack.services = self.runtime_probe.merge_live_state(stack.services, stack.profiles)
 
         return stack
 

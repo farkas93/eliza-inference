@@ -13,6 +13,7 @@ load_env() {
   HF_HOME="${HF_HOME:-$MODEL_HOME/huggingface}"
   LLAMA_CACHE="${LLAMA_CACHE:-$MODEL_HOME/llama}"
   LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
+  RUNTIME_STATE_FILE="${RUNTIME_STATE_FILE:-$ROOT_DIR/.runtime/service_profiles.json}"
   ELIZA_VENV_DIR="${ELIZA_VENV_DIR:-$ROOT_DIR/.venvs}"
   BASE_VENV="${BASE_VENV:-$ELIZA_VENV_DIR/base}"
   STT_VENV="${STT_VENV:-$ELIZA_VENV_DIR/stt}"
@@ -32,7 +33,7 @@ load_env() {
     PIPER_BIN="$TTS_VENV/bin/piper"
   fi
 
-  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV VOCODE_VENV DEFAULT_HOST ELIZA_MEDIUM_PORT ELIZA_SMALL_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
+  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR RUNTIME_STATE_FILE ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV VOCODE_VENV DEFAULT_HOST ELIZA_MEDIUM_PORT ELIZA_SMALL_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
 }
 
 venv_python() {
@@ -56,6 +57,18 @@ ensure_venv() {
 
 run_base_python() {
   "$BASE_VENV/bin/python" "$@"
+}
+
+runtime_state() {
+  if [[ -x "$BASE_VENV/bin/python" ]]; then
+    "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/runtime_state.py" "$@"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT_DIR/scripts/lib/runtime_state.py" "$@"
+  elif command -v python >/dev/null 2>&1; then
+    python "$ROOT_DIR/scripts/lib/runtime_state.py" "$@"
+  else
+    uv run --project "$ROOT_DIR" python "$ROOT_DIR/scripts/lib/runtime_state.py" "$@"
+  fi
 }
 
 usage_service_profile() {

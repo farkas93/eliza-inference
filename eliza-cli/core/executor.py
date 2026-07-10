@@ -44,7 +44,7 @@ class Executor:
         # But since we are running in a tmux session, it might be different.
         # However, the script prints it.
         # Let's return a placeholder or try to find it.
-        return f"logs/{service_name}.log"
+        return str(self.root_dir / "logs" / f"{service_name}.log")
 
     def stop_service(self, service_name: str) -> None:
         """Stops a service."""
@@ -55,4 +55,4 @@ class Executor:
         """Restarts a service with a potentially new profile."""
         cmd = ["./scripts/restart", service_name, "--profile", profile_id]
         self._run_command(cmd)
-        return f"logs/{service_name}.log"
+        return str(self.root_dir / "logs" / f"{service_name}.log")
