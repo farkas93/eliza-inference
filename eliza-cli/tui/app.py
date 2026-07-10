@@ -5,7 +5,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.widgets import ListView
-from textual.widgets import Footer, Header, Static, TabbedContent, TabPane
+from textual.widgets import Static, TabbedContent, TabPane
 
 from core.discovery import DiscoveryEngine
 from core.executor import Executor
@@ -17,17 +17,76 @@ from .widgets import ProfileInspector, ProfileList, ProfileSelectDialog, Service
 
 class ElizaTUI(App):
     """The main ElizaTUI Application."""
+
+    CSS = """
+    Screen {
+        layout: vertical;
+    }
+
+    #main-container {
+        layout: vertical;
+        height: 1fr;
+    }
+
+    #top-bar {
+        height: 1;
+        padding: 0 1;
+        background: $panel;
+    }
+
+    #top-title {
+        width: 1fr;
+        content-align: left middle;
+    }
+
+    #top-quit {
+        width: auto;
+        content-align: right middle;
+    }
+
+    #monitor-strip {
+        height: 1;
+        padding: 0 1;
+        background: $boost;
+        color: $text;
+    }
+
+    #content-row {
+        height: 1fr;
+    }
+
+    #main-tabs {
+        width: 2fr;
+    }
+
+    #profile_inspector {
+        width: 1fr;
+        border: solid $surface;
+        padding: 0 1;
+    }
+
+    #log_viewer {
+        height: 12;
+        border-top: solid $surface;
+        display: none;
+    }
+
+    #context-legend {
+        height: 1;
+        padding: 0 1;
+        background: $panel;
+    }
+    """
     
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("f1", "switch_services", "Services"),
         Binding("f2", "switch_profiles", "Profiles"),
-        Binding("f3", "switch_monitor", "Monitor"),
         Binding("s", "start_service", "Start"),
         Binding("k", "stop_service", "Stop"),
         Binding("r", "restart_service", "Restart"),
-        Binding("p", "change_profile", "Profile"),
-        Binding("l", "toggle_logs", "Logs"),
+        Binding("p", "change_profile", "Swap Profile"),
+        Binding("l", "toggle_logs", "Toggle Logs"),
     ]
 
     def __init__(self, root_dir: pathlib.Path):
@@ -38,29 +97,37 @@ class ElizaTUI(App):
         self.monitor = MonitorEngine(root_dir)
         self.stack = self.engine.discover()
         self.active_log_path = None
+        self.logs_visible = False
         self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with Container(id="main-container"):
-            with Horizontal():
-                with TabbedContent():
-                    with TabPane("Services", id="services_tab"):
+            with Horizontal(id="top-bar"):
+                yield Static("Eliza TUI", id="top-title")
+                yield Static("q Quit", id="top-quit")
+            yield Static(id="monitor-strip")
+            with Horizontal(id="content-row"):
+                with TabbedContent(id="main-tabs"):
+                    with TabPane("F1 Services", id="services_tab"):
                         yield ServiceTable(id="service_table")
-                    with TabPane("Profiles", id="profiles_tab"):
+                    with TabPane("F2 Profiles", id="profiles_tab"):
                         yield ProfileList(id="profile_list")
-                    with TabPane("Monitor", id="monitor_tab"):
-                        yield Static(id="monitor_display")
                 with ProfileInspector(id="profile_inspector"):
                     pass
-        yield LogViewer(pathlib.Path("/dev/null"), id="log_viewer")
-        yield Footer()
+            yield LogViewer(pathlib.Path("/dev/null"), id="log_viewer")
+            yield Static(id="context-legend")
 
     def on_mount(self) -> None:
         """Initialize the widgets with data on startup."""
         self._refresh_service_table()
-        self.query_one("#profile_list", ProfileList).update_data(list(self.stack.profiles.values()))
+        profiles = list(self.stack.profiles.values())
+        self.query_one("#profile_list", ProfileList).update_data(profiles)
+        if profiles:
+            self.query_one("#profile_inspector", ProfileInspector).update_profile(profiles[0])
         self.query_one("#service_table").focus()
+        self._set_logs_visible(False)
+        self._update_context_legend()
+        self.update_monitor()
         self.set_interval(3, self.refresh_stack_state)
         self.set_interval(2, self.update_monitor)
         self.set_interval(1, self.update_logs)
@@ -94,6 +161,31 @@ class ElizaTUI(App):
             for service in self.stack.services.values()
         )
 
+    def _active_tab(self) -> str:
+        return self.query_one("#main-tabs", TabbedContent).active or "services_tab"
+
+    def _update_context_legend(self) -> None:
+        logs_status = "ON" if self.logs_visible else "OFF"
+        if self._active_tab() == "services_tab":
+            legend = "Services: s start | k stop | r restart | p swap profile | l logs ({})".format(logs_status)
+        else:
+            legend = "Profiles: arrows browse | enter select | l logs ({})".format(logs_status)
+        self.query_one("#context-legend", Static).update(legend)
+
+    def _update_profile_inspector_by_item_id(self, item_id: str | None) -> None:
+        if not item_id:
+            return
+        for profile in self.stack.profiles.values():
+            if profile.name.replace("/", "_") == item_id:
+                self.query_one("#profile_inspector", ProfileInspector).update_profile(profile)
+                return
+
+    def _set_logs_visible(self, visible: bool) -> None:
+        self.logs_visible = visible
+        log_viewer = self.query_one("#log_viewer", LogViewer)
+        log_viewer.styles.display = "block" if visible else "none"
+        self._update_context_legend()
+
     def refresh_stack_state(self) -> None:
         self.stack = self.engine.discover()
         if self._current_service_snapshot() != self._service_snapshot:
@@ -102,42 +194,46 @@ class ElizaTUI(App):
     def update_monitor(self) -> None:
         """Periodically update the monitor display."""
         stats = self.monitor.get_stats()
-        display = (
-            f"[bold cyan]CPU Usage:[/bold cyan] {stats.cpu_percent}%\n"
-            f"[bold cyan]RAM Usage:[/bold cyan] {stats.memory_percent}%\n\n"
-            f"[bold cyan]GPU:[/bold cyan] {stats.gpu_name}\n"
-            f"  Used: {stats.gpu_memory_used:.0f} MiB\n"
-            f"  Total: {stats.gpu_memory_total:.0f} MiB"
-        )
-        self.query_one("#monitor_display", Static).update(display)
+        if stats.gpu_name == "N/A" or stats.gpu_memory_total <= 0:
+            gpu_text = "GPU0 N/A"
+        else:
+            gpu_text = f"GPU0 {stats.gpu_name} {stats.gpu_memory_used:.0f}/{stats.gpu_memory_total:.0f} MiB"
+        display = f"CPU {stats.cpu_percent:5.1f}% | RAM {stats.memory_percent:5.1f}% | {gpu_text}"
+        self.query_one("#monitor-strip", Static).update(display)
 
     def update_logs(self) -> None:
         """Periodically update the log viewer if a file is attached."""
-        if self.active_log_path:
+        if self.logs_visible and self.active_log_path:
             self.query_one("#log_viewer", LogViewer).update_logs()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Handle profile selection from ProfileList."""
         if event.control.id == "profile_list":
-            sanitized_id = event.item.id
-            for profile in self.stack.profiles.values():
-                if profile.name.replace("/", "_") == sanitized_id:
-                    self.query_one("#profile_inspector", ProfileInspector).update_profile(profile)
-                    break
+            self._update_profile_inspector_by_item_id(event.item.id)
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.control.id == "profile_list" and event.item is not None:
+            self._update_profile_inspector_by_item_id(event.item.id)
 
     def action_switch_services(self) -> None:
-        self.query_one(TabbedContent).active = "services_tab"
+        self.query_one("#main-tabs", TabbedContent).active = "services_tab"
         self.query_one("#service_table").focus()
+        self._update_context_legend()
 
     def action_switch_profiles(self) -> None:
-        self.query_one(TabbedContent).active = "profiles_tab"
+        self.query_one("#main-tabs", TabbedContent).active = "profiles_tab"
         self.query_one("#profile_list").focus()
+        self._update_context_legend()
 
-    def action_switch_monitor(self) -> None:
-        self.query_one(TabbedContent).active = "monitor_tab"
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.tab.id == "services_tab":
+            self.query_one("#service_table").focus()
+        elif event.tab.id == "profiles_tab":
+            self.query_one("#profile_list").focus()
+        self._update_context_legend()
 
     def action_start_service(self) -> None:
-        if self.query_one(TabbedContent).active != "services_tab":
+        if self._active_tab() != "services_tab":
             return
         
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
@@ -157,7 +253,7 @@ class ElizaTUI(App):
             self.notify(f"Failed to start {service_name}: {e}", severity="error")
 
     def action_stop_service(self) -> None:
-        if self.query_one(TabbedContent).active != "services_tab":
+        if self._active_tab() != "services_tab":
             return
             
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
@@ -175,7 +271,7 @@ class ElizaTUI(App):
             self.notify(f"Failed to stop {service_name}: {e}", severity="error")
 
     def action_restart_service(self) -> None:
-        if self.query_one(TabbedContent).active != "services_tab":
+        if self._active_tab() != "services_tab":
             return
             
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
@@ -195,7 +291,7 @@ class ElizaTUI(App):
             self.notify(f"Failed to restart {service_name}: {e}", severity="error")
 
     def action_change_profile(self) -> None:
-        if self.query_one(TabbedContent).active != "services_tab":
+        if self._active_tab() != "services_tab":
             return
 
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
@@ -259,11 +355,11 @@ class ElizaTUI(App):
     def attach_logs(self, log_path: str) -> None:
         self.active_log_path = pathlib.Path(log_path)
         self.query_one("#log_viewer", LogViewer).set_log_file(self.active_log_path)
+        self._set_logs_visible(True)
         self.notify(f"Viewing logs: {log_path}", severity="information")
 
     def action_toggle_logs(self) -> None:
-        log_viewer = self.query_one("#log_viewer", LogViewer)
-        log_viewer.toggle_class("hidden")
+        self._set_logs_visible(not self.logs_visible)
 
 if __name__ == "__main__":
     import sys
