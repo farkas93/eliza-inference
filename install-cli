@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_MAIN="$ROOT_DIR/eliza-cli/main.py"
 CLI_REQUIREMENTS="$ROOT_DIR/eliza-cli/requirements.txt"
 BIN_DIR="${ELIZA_CLI_BIN_DIR:-$HOME/.local/bin}"
