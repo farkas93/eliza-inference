@@ -133,6 +133,7 @@ class ElizaTUI(App):
         self.active_log_path: pathlib.Path | None = None
         self.logs_visible = False
         self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
+        self._refreshing_model_inventory = False
 
     def compose(self) -> ComposeResult:
         with Container(id="main-container"):
@@ -169,7 +170,6 @@ class ElizaTUI(App):
         self.update_monitor()
 
         self.set_interval(3, self.refresh_stack_state)
-        self.set_interval(10, self.refresh_model_inventory)
         self.set_interval(2, self.update_monitor)
         self.set_interval(1, self.update_logs)
 
@@ -328,11 +328,18 @@ class ElizaTUI(App):
         self._service_snapshot = self._current_service_snapshot()
 
     def refresh_model_inventory(self) -> None:
-        self.profile_states = self.model_manager.build_profile_states(self.stack.profiles, self.stack.services)
-        self.model_entries = self.model_manager.list_models(self.stack.profiles)
-        self.model_entries_by_path = {entry.path: entry for entry in self.model_entries}
-        self._refresh_profile_list()
-        self._refresh_model_table()
+        if self._refreshing_model_inventory:
+            return
+
+        self._refreshing_model_inventory = True
+        try:
+            self.profile_states = self.model_manager.build_profile_states(self.stack.profiles, self.stack.services)
+            self.model_entries = self.model_manager.list_models(self.stack.profiles)
+            self.model_entries_by_path = {entry.path: entry for entry in self.model_entries}
+            self._refresh_profile_list()
+            self._refresh_model_table()
+        finally:
+            self._refreshing_model_inventory = False
 
     def refresh_stack_state(self, force: bool = False) -> None:
         self.stack = self.engine.discover()
@@ -355,6 +362,13 @@ class ElizaTUI(App):
 
     def _update_profile_inspector_by_item_id(self, item_id: str | None) -> None:
         if not item_id:
+            return
+        profile_list = self.query_one("#profile_list", ProfileList)
+        profile_name = profile_list.get_profile_name_by_item_id(item_id)
+        if profile_name:
+            profile = self.stack.profiles.get(profile_name)
+            if profile is not None:
+                self.query_one("#profile_inspector", ProfileInspector).update_profile(profile)
             return
         for profile in self.stack.profiles.values():
             if profile.name.replace("/", "_") == item_id:

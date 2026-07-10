@@ -74,16 +74,29 @@ class ServiceTable(DataTable):
 
 class ProfileList(ListView):
     """A list of available profiles for easy selection."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._profile_by_item_id: dict[str, str] = {}
+        self._generation = 0
+
     def update_data(self, profiles: List[Profile], profile_markers: Dict[str, str] | None = None):
         self.clear()
+        self._generation += 1
+        self._profile_by_item_id.clear()
         profile_markers = profile_markers or {}
-        for p in profiles:
-            # Sanitize id by replacing slashes with underscores
-            safe_id = p.name.replace("/", "_")
+        for index, p in enumerate(profiles):
+            item_id = f"profile_{self._generation}_{index}"
+            self._profile_by_item_id[item_id] = p.name
             marker = profile_markers.get(p.name, "[dim]....[/dim]")
             label_text = f"{marker} {p.name}"
             # ListItem expects a Widget (like Label) as its first argument
-            self.append(ListItem(Label(label_text), id=safe_id))
+            self.append(ListItem(Label(label_text), id=item_id))
+
+    def get_profile_name_by_item_id(self, item_id: str | None) -> str | None:
+        if item_id is None:
+            return None
+        return self._profile_by_item_id.get(item_id)
 
 
 class ModelTable(DataTable):
