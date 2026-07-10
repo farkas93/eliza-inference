@@ -105,6 +105,7 @@ class ElizaTUI(App):
         Binding("f2", "switch_profiles", "Profiles"),
         Binding("f3", "switch_models", "Models"),
         Binding("s", "start_service", "Start"),
+        Binding("i", "setup_service", "Setup"),
         Binding("k", "stop_service", "Stop"),
         Binding("r", "restart_service", "Restart"),
         Binding("p", "change_profile", "Swap Profile"),
@@ -406,7 +407,7 @@ class ElizaTUI(App):
         logs_status = "ON" if self.logs_visible else "OFF"
         tab = self._active_tab()
         if tab == "services_tab":
-            legend = "Services: s start | k stop | r restart | p swap profile | l logs ({})".format(logs_status)
+            legend = "Services: i setup | s start | k stop | r restart | p swap profile | l logs ({})".format(logs_status)
         elif tab == "profiles_tab":
             legend = "Profiles: [LIVE]/[RDY]/[MISS] | arrows browse | l logs ({})".format(logs_status)
         else:
@@ -560,6 +561,24 @@ class ElizaTUI(App):
             self.attach_logs(log_path)
         except Exception as exc:
             self.notify(f"Failed to start {service_name}: {exc}", severity="error")
+
+    def action_setup_service(self) -> None:
+        if self._active_tab() != "services_tab":
+            return
+
+        service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
+        if not service_name:
+            self.notify("No service selected!", severity="error")
+            return
+
+        profile = self.stack.services[service_name].profile_id
+        self.notify(f"Running setup for {service_name} ({profile})...")
+        try:
+            self.executor.ensure_service_ready(service_name, profile)
+            self.refresh_model_inventory()
+            self.notify(f"Setup complete for {service_name}", severity="information")
+        except Exception as exc:
+            self.notify(f"Setup failed for {service_name}: {exc}", severity="error")
 
     def action_stop_service(self) -> None:
         if self._active_tab() != "services_tab":
