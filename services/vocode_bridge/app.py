@@ -61,6 +61,17 @@ def _voice_system_prompt() -> str:
     )
 
 
+def _tools_mode() -> str:
+    mode = os.environ.get("BRIDGE_TOOLS_MODE", "auto").strip().lower()
+    if mode not in {"auto", "on", "off"}:
+        return "auto"
+    return mode
+
+
+def _tool_call_fallback_text() -> str:
+    return os.environ.get("BRIDGE_TOOL_CALL_FALLBACK_TEXT", "I need to run a tool before I can answer.")
+
+
 def _vad_enabled() -> bool:
     return os.environ.get("BRIDGE_VAD_ENABLED", "true").lower() not in {"false", "0", "no", "off"}
 
@@ -187,7 +198,11 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
         raise RuntimeError(f"TTS request failed: {exc}") from exc
 
 
-def generate_assistant_text(user_text: str) -> str:
+def generate_assistant_response(
+    user_text: str,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any | None = None,
+) -> dict[str, Any]:
     llm_base_url = _eliza_small_base_url()
     payload = {
         "model": _eliza_small_model(),
@@ -201,6 +216,12 @@ def generate_assistant_text(user_text: str) -> str:
         "temperature": 0.2,
         "max_tokens": 120,
     }
+
+    if _tools_mode() != "off" and tools:
+        payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+
     try:
         body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
     except Exception as exc:
@@ -212,6 +233,7 @@ def generate_assistant_text(user_text: str) -> str:
         raise RuntimeError("LLM returned no choices")
 
     message = choices[0].get("message") or {}
+    tool_calls = message.get("tool_calls") if isinstance(message.get("tool_calls"), list) else []
     content = message.get("content")
     if isinstance(content, str):
         assistant_text = content.strip()
@@ -222,9 +244,16 @@ def generate_assistant_text(user_text: str) -> str:
     else:
         assistant_text = str(message.get("reasoning_content") or "").strip()
 
+    if not assistant_text and tool_calls:
+        assistant_text = _tool_call_fallback_text().strip() or "I need to run a tool before I can answer."
+
     if not assistant_text:
         raise RuntimeError("LLM returned an empty assistant response")
-    return assistant_text
+
+    return {
+        "assistant_text": assistant_text,
+        "tool_calls": tool_calls,
+    }
 
 
 def _service_status(name: str, base_url: str, model: str) -> dict[str, Any]:
@@ -306,10 +335,19 @@ class BridgeAgent(BaseAgent):
     def __init__(self):
         super().__init__(initial_message=None)
         self.last_response = ""
+        self.last_tool_calls: list[dict[str, Any]] = []
+        self.tools: list[dict[str, Any]] = []
+        self.tool_choice: Any | None = None
 
     def respond(self, human_input: str):
-        response = generate_assistant_text(human_input)
+        result = generate_assistant_response(human_input, self.tools, self.tool_choice)
+        response = str(result.get("assistant_text") or "").strip()
         self.last_response = response
+        raw_tool_calls = result.get("tool_calls")
+        if isinstance(raw_tool_calls, list):
+            self.last_tool_calls = [item for item in raw_tool_calls if isinstance(item, dict)]
+        else:
+            self.last_tool_calls = []
         return response
 
 
@@ -355,6 +393,15 @@ class BridgeSession:
     speech_active: bool = False
     speech_ms: float = 0.0
     trailing_silence_ms: float = 0.0
+
+    def set_tool_context(self, tools: list[dict[str, Any]] | None, tool_choice: Any | None = None) -> None:
+        if _tools_mode() == "off":
+            self.agent.tools = []
+            self.agent.tool_choice = None
+            return
+
+        self.agent.tools = [item for item in (tools or []) if isinstance(item, dict)]
+        self.agent.tool_choice = tool_choice
 
     def ensure_conversation(self) -> TurnBasedConversation:
         if self.conversation is None:
@@ -420,8 +467,16 @@ def health() -> dict[str, Any]:
     }
 
 
-async def _emit_assistant_turn(websocket: WebSocket, assistant_text: str, audio_bytes: bytes, mime_type: str) -> None:
+async def _emit_assistant_turn_with_tools(
+    websocket: WebSocket,
+    assistant_text: str,
+    audio_bytes: bytes,
+    mime_type: str,
+    tool_calls: list[dict[str, Any]],
+) -> None:
     await websocket.send_json({"type": "assistant_text", "text": assistant_text})
+    if tool_calls:
+        await websocket.send_json({"type": "assistant_tool_calls", "tool_calls": tool_calls})
     await websocket.send_json(
         {
             "type": "assistant_audio",
@@ -454,11 +509,12 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
         session.reset_audio()
         return
 
-    await _emit_assistant_turn(
+    await _emit_assistant_turn_with_tools(
         websocket,
         session.agent.last_response,
         session.output_device.last_audio_bytes,
         session.synthesizer.last_mime_type,
+        session.agent.last_tool_calls,
     )
     session.reset_audio()
 
@@ -492,6 +548,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             if message_type == "start":
                 session.session_id = str(message.get("session_id") or session.session_id)
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
                 session.reset_audio()
                 await websocket.send_json({"type": "started", "session_id": session.session_id})
 
@@ -518,14 +575,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "message": "Missing text"})
                     continue
 
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
+
                 assistant_text = session.agent.respond(user_text)
                 session.output_device.send_audio(session.synthesizer.synthesize(assistant_text))
-                await _emit_assistant_turn(
+                await _emit_assistant_turn_with_tools(
                     websocket,
                     session.agent.last_response,
                     session.output_device.last_audio_bytes,
                     session.synthesizer.last_mime_type,
+                    session.agent.last_tool_calls,
                 )
+
+            elif message_type == "tool_context":
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
+                await websocket.send_json({"type": "tool_context_updated", "tool_count": len(session.agent.tools)})
 
             elif message_type == "synthesize":
                 text = str(message.get("text") or "")

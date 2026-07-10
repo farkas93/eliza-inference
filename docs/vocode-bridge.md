@@ -35,6 +35,8 @@ BRIDGE_VAD_ENABLED=true
 BRIDGE_VAD_RMS_THRESHOLD=450
 BRIDGE_VAD_SILENCE_MS=700
 BRIDGE_VAD_MIN_SPEECH_MS=300
+BRIDGE_TOOLS_MODE=auto
+BRIDGE_TOOL_CALL_FALLBACK_TEXT="I need to run a tool before I can answer."
 ```
 
 ## Start
@@ -90,6 +92,8 @@ Client messages:
 { "type": "audio_input", "audio": "base64-pcm16", "mime_type": "audio/pcm;rate=16000" }
 { "type": "audio_input_end" }
 { "type": "user_text", "text": "Hello" }
+{ "type": "user_text", "text": "Hello", "tools": [...], "tool_choice": "auto" }
+{ "type": "tool_context", "tools": [...], "tool_choice": "auto" }
 { "type": "synthesize", "text": "Hello." }
 { "type": "stop" }
 ```
@@ -102,6 +106,7 @@ Bridge messages:
 { "type": "audio_received", "bytes": 12345 }
 { "type": "transcript", "text": "...", "is_final": true }
 { "type": "assistant_text", "text": "..." }
+{ "type": "assistant_tool_calls", "tool_calls": [...] }
 { "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
 { "type": "assistant_interrupted" }
 { "type": "turn_complete" }
@@ -115,6 +120,7 @@ Contract notes:
 
 - `audio_input` should be sent continuously while mic capture is active.
 - `audio_input_end` is optional and treated as compatibility fallback.
+- `tool_context` can be sent once per session to set persistent tool definitions.
 - Clients should be ready for `assistant_interrupted` when user speech arrives mid-response.
 - `turn_complete` is emitted when the bridge decides the turn is finished.
 

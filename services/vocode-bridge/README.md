@@ -9,6 +9,7 @@ Current protocol supports:
 - assistant text through hosted `eliza-small`
 - assistant audio through hosted TTS
 - compatibility fallback `audio_input_end` for forced end-of-turn
+- optional tool context forwarding (`tools` and `tool_choice`) to the local model
 
 Start:
 
