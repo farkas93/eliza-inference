@@ -112,6 +112,9 @@ Test the local vocode bridge voice turn:
 ```bash
 ./scripts/start vocode-bridge --profile vocode/bridge-local
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
+
+# optional: validate bridge-side endpointing (no audio_input_end)
+.venvs/vocode/bin/python clients/audio/vocode_bridge_test.py --url ws://127.0.0.1:8021/ws --auto-endpoint
 ```
 
 Reinstall vocode bridge dependencies after local development changes:

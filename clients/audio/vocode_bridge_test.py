@@ -65,6 +65,11 @@ async def main_async() -> int:
     parser.add_argument("--audio-file", type=Path)
     parser.add_argument("--output", type=Path, default=Path("tmp/vocode-bridge-synth.wav"))
     parser.add_argument("--chunk-frames", type=int, default=2048)
+    parser.add_argument(
+        "--auto-endpoint",
+        action="store_true",
+        help="Do not send audio_input_end; wait for bridge-side VAD endpointing.",
+    )
     parser.add_argument("--text-only-turn", action="store_true", help="Skip audio input and run a text user turn.")
     parser.add_argument(
         "--expect-error",
@@ -105,7 +110,8 @@ async def main_async() -> int:
                     )
                     await recv_until(websocket, "audio_received", timeout=30)
 
-                await websocket.send(json.dumps({"type": "audio_input_end"}))
+                if not args.auto_endpoint:
+                    await websocket.send(json.dumps({"type": "audio_input_end"}))
                 transcript = await recv_until(websocket, "transcript", timeout=300)
                 text = str(transcript.get("text") or "").strip()
                 if not text:

@@ -69,6 +69,8 @@ class Executor:
         elif service_name == "tts":
             commands.append(["./scripts/setup", "tts", "--profile", profile_id])
         elif service_name == "vocode-bridge":
+            commands.append(["./scripts/setup", "stt", "--profile", "stt/faster-whisper-small-cpu"])
+            commands.append(["./scripts/setup", "tts", "--profile", "tts/piper-lessac"])
             commands.append(["./scripts/setup", "vocode"])
 
         return commands

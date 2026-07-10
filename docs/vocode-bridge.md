@@ -77,6 +77,14 @@ The bridge smoke test:
 5. Waits for transcript, assistant text, assistant audio, and turn completion
 ```
 
+To validate bridge-side endpointing (no explicit `audio_input_end`), run:
+
+```bash
+.venvs/vocode/bin/python clients/audio/vocode_bridge_test.py \
+  --url ws://127.0.0.1:8021/ws \
+  --auto-endpoint
+```
+
 It writes the prompt WAV to:
 
 ```text
@@ -123,6 +131,20 @@ Contract notes:
 - `tool_context` can be sent once per session to set persistent tool definitions.
 - Clients should be ready for `assistant_interrupted` when user speech arrives mid-response.
 - `turn_complete` is emitted when the bridge decides the turn is finished.
+
+## Split-Host Checklist
+
+For GenieTor on `10.42.47.7` and bridge on `10.42.47.8`, configure GenieTor with:
+
+```bash
+ELIZA_BACKEND=local-vocode
+LOCAL_VOCODE_WS_URL=ws://10.42.47.8:8021/ws
+```
+
+Expected GenieTor session log lines:
+
+- `Connecting to local vocode bridge` with `wsUrl: ws://10.42.47.8:8021/ws`
+- `Connected to local vocode bridge`
 
 ## Failure Smoke Tests
 
