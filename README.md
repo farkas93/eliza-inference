@@ -28,7 +28,7 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 ## Quick Start
 
 ```bash
-./scripts/install-cli
+./install-cli
 ./scripts/doctor
 ./scripts/setup prerequisites
 ./scripts/setup llamacpp

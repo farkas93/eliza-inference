@@ -61,7 +61,7 @@ Stop everything in reverse order:
 ## Installation
 
 ```bash
-./scripts/install-cli
+./install-cli
 ./scripts/setup prerequisites
 ./scripts/setup llamacpp
 ./scripts/setup sglang
@@ -70,7 +70,7 @@ Stop everything in reverse order:
 ./scripts/setup vocode
 ```
 
-`scripts/install-cli` installs a PATH-based `eliza-cli` launcher under `~/.local/bin` and adds `~/.local/bin` to `.bashrc`/`.zshrc` if needed.
+`install-cli` installs a PATH-based `eliza-cli` launcher under `~/.local/bin` and adds `~/.local/bin` to `.bashrc`/`.zshrc` if needed.
 
 `scripts/setup prerequisites` bootstraps `uv`, installs `git-lfs` through `apt` when `sudo` is available, and creates the lightweight base environment under `.venvs/base` for CLI helpers and smoke-test clients.
 

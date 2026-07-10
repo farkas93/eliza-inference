@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLI_MAIN="$ROOT_DIR/eliza-cli/main.py"
+CLI_REQUIREMENTS="$ROOT_DIR/eliza-cli/requirements.txt"
+BIN_DIR="${ELIZA_CLI_BIN_DIR:-$HOME/.local/bin}"
+BIN_PATH="$BIN_DIR/eliza-cli"
+AUTO_SHELL_RC="true"
+
+print_help() {
+  cat <<USAGE
+Usage: ./install-cli [options]
+
+Installs a PATH-based eliza-cli launcher under ~/.local/bin.
+
+Options:
+  --no-shell-rc   Do not edit shell rc files.
+  -h, --help      Show this help message.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-shell-rc)
+      AUTO_SHELL_RC="false"
+      shift
+      ;;
+    -h|--help)
+      print_help
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+install_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "uv is missing and curl is not available to install it." >&2
+    return 1
+  fi
+
+  echo "Installing uv with the official installer..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "uv installation finished, but uv is still not on PATH." >&2
+    echo "Open a new shell or add ~/.local/bin to PATH, then rerun ./install-cli." >&2
+    return 1
+  fi
+}
+
+add_path_block() {
+  local rc_file="$1"
+  local begin="# >>> eliza-cli path >>>"
+  local end="# <<< eliza-cli path <<<"
+
+  if [[ ! -f "$rc_file" ]]; then
+    touch "$rc_file"
+  fi
+
+  if grep -q "$begin" "$rc_file"; then
+    return 0
+  fi
+
+  {
+    printf "\n%s\n" "$begin"
+    printf "if [ -d \"$HOME/.local/bin\" ]; then\n"
+    printf "  case \":$PATH:\" in\n"
+    printf "    *:\"$HOME/.local/bin\":*) ;;\n"
+    printf "    *) export PATH=\"$HOME/.local/bin:$PATH\" ;;\n"
+    printf "  esac\n"
+    printf "fi\n"
+    printf "%s\n" "$end"
+  } >> "$rc_file"
+
+  echo "Updated $rc_file with ~/.local/bin PATH block"
+}
+
+if [[ ! -f "$CLI_MAIN" ]]; then
+  echo "CLI entrypoint is missing: $CLI_MAIN" >&2
+  exit 1
+fi
+
+if [[ ! -f "$CLI_REQUIREMENTS" ]]; then
+  echo "CLI requirements file is missing: $CLI_REQUIREMENTS" >&2
+  exit 1
+fi
+
+install_uv
+mkdir -p "$BIN_DIR"
+
+cat > "$BIN_PATH" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec uv run --with-requirements "$CLI_REQUIREMENTS" "$CLI_MAIN" "\$@"
+EOF
+
+chmod +x "$BIN_PATH"
+echo "Installed launcher: $BIN_PATH"
+
+if [[ "$AUTO_SHELL_RC" == "true" ]]; then
+  add_path_block "$HOME/.bashrc"
+  add_path_block "$HOME/.zshrc"
+fi
+
+export PATH="$BIN_DIR:$PATH"
+
+if "$BIN_PATH" list >/dev/null 2>&1; then
+  echo "eliza-cli installation verified."
+  echo "Run: eliza-cli tui"
+else
+  echo "Launcher installed, but verification failed. Try running: $BIN_PATH list" >&2
+  exit 1
+fi
