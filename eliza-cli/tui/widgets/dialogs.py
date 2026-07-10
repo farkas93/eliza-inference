@@ -43,3 +43,27 @@ class ProfileSelectDialog(ModalScreen):
 
         self.on_select(selected_profile)
         self.dismiss()
+
+
+class ConfirmDialog(ModalScreen[bool]):
+    """A simple confirmation modal."""
+
+    def __init__(self, title: str, message: str):
+        super().__init__()
+        self.title = title
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        with Vertical(id="confirm-dialog"):
+            yield Label(f"[bold]{self.title}[/bold]")
+            yield Label(self.message)
+            yield Button("Confirm", variant="success", id="confirm_btn")
+            yield Button("Cancel", variant="error", id="cancel_btn")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm_btn":
+            self.dismiss(True)
+        elif event.button.id == "cancel_btn":
+            self.dismiss(False)

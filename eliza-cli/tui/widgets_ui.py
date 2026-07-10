@@ -2,7 +2,7 @@ from textual.widgets import DataTable, ListItem, Label, Static
 from textual.containers import Container
 from textual.widgets import ListView
 from core.models import Profile, Service
-from typing import List
+from typing import Dict, List
 
 class ServiceTable(DataTable):
     """A table showing the current services in the stack."""
@@ -74,13 +74,62 @@ class ServiceTable(DataTable):
 
 class ProfileList(ListView):
     """A list of available profiles for easy selection."""
-    def update_data(self, profiles: List[Profile]):
+    def update_data(self, profiles: List[Profile], profile_markers: Dict[str, str] | None = None):
         self.clear()
+        profile_markers = profile_markers or {}
         for p in profiles:
             # Sanitize id by replacing slashes with underscores
             safe_id = p.name.replace("/", "_")
+            marker = profile_markers.get(p.name, "[dim]....[/dim]")
+            label_text = f"{marker} {p.name}"
             # ListItem expects a Widget (like Label) as its first argument
-            self.append(ListItem(Label(p.name), id=safe_id))
+            self.append(ListItem(Label(label_text), id=safe_id))
+
+
+class ModelTable(DataTable):
+    """A table showing model artifacts under MODEL_HOME."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_initialized = False
+
+    def _ensure_columns(self) -> None:
+        if self._columns_initialized:
+            return
+        self.add_columns("Name", "Status", "Size", "Location", "Profiles")
+        self._columns_initialized = True
+
+    def update_data(self, entries: List[dict[str, str]]) -> None:
+        self._ensure_columns()
+        self.clear(columns=False)
+        for entry in entries:
+            self.add_row(
+                entry["name"],
+                entry["status"],
+                entry["size"],
+                entry["path"],
+                entry["profiles"],
+            )
+
+    def get_selected_model_name(self) -> str:
+        try:
+            row_index = self.cursor_row
+            if row_index is not None and row_index >= 0:
+                row_data = self.get_row_at(row_index)
+                return str(row_data[0])
+        except Exception:
+            pass
+        return ""
+
+    def get_selected_model_path(self) -> str:
+        try:
+            row_index = self.cursor_row
+            if row_index is not None and row_index >= 0:
+                row_data = self.get_row_at(row_index)
+                return str(row_data[3])
+        except Exception:
+            pass
+        return ""
 
 class ProfileInspector(Static):
     """A panel showing detailed metadata for a selected profile."""

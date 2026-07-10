@@ -1,4 +1,5 @@
 import pathlib
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -12,11 +13,37 @@ class SystemStats:
     gpu_name: str
     gpu_memory_used: float
     gpu_memory_total: float
+    disk_used_bytes: int
+    disk_total_bytes: int
+    disk_percent: float
+    model_home_used_bytes: int
 
 class MonitorEngine:
     def __init__(self, root_dir: pathlib.Path):
         self.root_dir = root_dir
         self.gpu_name = "N/A"
+        self.model_home = self._resolve_model_home()
+
+    def _resolve_model_home(self) -> pathlib.Path:
+        env_model_home = os.getenv("MODEL_HOME")
+        if env_model_home:
+            return pathlib.Path(env_model_home).expanduser()
+
+        env_file = self.root_dir / ".env"
+        if env_file.exists():
+            try:
+                with open(env_file, "r", encoding="utf-8") as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        key, value = line.split("=", 1)
+                        if key.strip() == "MODEL_HOME":
+                            return pathlib.Path(value.strip().strip('"').strip("'")).expanduser()
+            except OSError:
+                pass
+
+        return pathlib.Path.home() / "models"
 
     def _query_gpu0_stats(self) -> tuple[str, float, float]:
         commands = [
@@ -89,8 +116,19 @@ class MonitorEngine:
     def get_stats(self) -> SystemStats:
         cpu = psutil.cpu_percent(interval=0)
         mem = psutil.virtual_memory().percent
+        disk_usage = psutil.disk_usage("/")
 
         gpu_name, gpu_used, gpu_total = self._query_gpu0_stats()
+
+        model_home = self.model_home
+        model_home_used = 0
+        if model_home.exists():
+            try:
+                model_home_used = sum(
+                    path.stat().st_size for path in model_home.rglob("*") if path.is_file()
+                )
+            except OSError:
+                model_home_used = 0
 
         return SystemStats(
             cpu_percent=cpu,
@@ -98,4 +136,8 @@ class MonitorEngine:
             gpu_name=gpu_name,
             gpu_memory_used=gpu_used,
             gpu_memory_total=gpu_total,
+            disk_used_bytes=disk_usage.used,
+            disk_total_bytes=disk_usage.total,
+            disk_percent=disk_usage.percent,
+            model_home_used_bytes=model_home_used,
         )

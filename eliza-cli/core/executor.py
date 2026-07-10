@@ -56,3 +56,9 @@ class Executor:
         cmd = ["./scripts/restart", service_name, "--profile", profile_id]
         self._run_command(cmd)
         return str(self.root_dir / "logs" / f"{service_name}.log")
+
+    def download_model(self, service_name: str, profile_id: str) -> str:
+        """Downloads artifacts for a service/profile and returns command output."""
+        cmd = ["./scripts/download-models", service_name, "--profile", profile_id]
+        result = self._run_command(cmd)
+        return (result.stdout or "").strip()
