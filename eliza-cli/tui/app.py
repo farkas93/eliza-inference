@@ -103,7 +103,7 @@ class ElizaTUI(App):
     def compose(self) -> ComposeResult:
         with Container(id="main-container"):
             with Horizontal(id="top-bar"):
-                yield Static("Eliza TUI", id="top-title")
+                yield Static("ELIZA Inference Control Center", id="top-title")
                 yield Static("q Quit", id="top-quit")
             yield Static(id="monitor-strip")
             with Horizontal(id="content-row"):
@@ -125,6 +125,7 @@ class ElizaTUI(App):
         if profiles:
             self.query_one("#profile_inspector", ProfileInspector).update_profile(profiles[0])
         self.query_one("#service_table").focus()
+        self._set_profile_inspector_visible(False)
         self._set_logs_visible(False)
         self._update_context_legend()
         self.update_monitor()
@@ -186,6 +187,20 @@ class ElizaTUI(App):
         log_viewer.styles.display = "block" if visible else "none"
         self._update_context_legend()
 
+    def _set_profile_inspector_visible(self, visible: bool) -> None:
+        inspector = self.query_one("#profile_inspector", ProfileInspector)
+        inspector.styles.display = "block" if visible else "none"
+
+    def _selected_service_log_path(self) -> pathlib.Path | None:
+        if self._active_tab() != "services_tab":
+            return self.active_log_path
+
+        service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
+        if not service_name:
+            return self.active_log_path
+
+        return self.root_dir / "logs" / f"{service_name}.log"
+
     def refresh_stack_state(self) -> None:
         self.stack = self.engine.discover()
         if self._current_service_snapshot() != self._service_snapshot:
@@ -218,18 +233,22 @@ class ElizaTUI(App):
     def action_switch_services(self) -> None:
         self.query_one("#main-tabs", TabbedContent).active = "services_tab"
         self.query_one("#service_table").focus()
+        self._set_profile_inspector_visible(False)
         self._update_context_legend()
 
     def action_switch_profiles(self) -> None:
         self.query_one("#main-tabs", TabbedContent).active = "profiles_tab"
         self.query_one("#profile_list").focus()
+        self._set_profile_inspector_visible(True)
         self._update_context_legend()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if event.tab.id == "services_tab":
             self.query_one("#service_table").focus()
+            self._set_profile_inspector_visible(False)
         elif event.tab.id == "profiles_tab":
             self.query_one("#profile_list").focus()
+            self._set_profile_inspector_visible(True)
         self._update_context_legend()
 
     def action_start_service(self) -> None:
@@ -359,7 +378,17 @@ class ElizaTUI(App):
         self.notify(f"Viewing logs: {log_path}", severity="information")
 
     def action_toggle_logs(self) -> None:
-        self._set_logs_visible(not self.logs_visible)
+        if self.logs_visible:
+            self._set_logs_visible(False)
+            return
+
+        selected_log_path = self._selected_service_log_path()
+        if selected_log_path is not None:
+            self.active_log_path = selected_log_path
+            self.query_one("#log_viewer", LogViewer).set_log_file(selected_log_path)
+
+        self._set_logs_visible(True)
+        self.update_logs()
 
 if __name__ == "__main__":
     import sys
