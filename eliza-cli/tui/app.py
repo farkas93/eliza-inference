@@ -553,6 +553,7 @@ class ElizaTUI(App):
         profile = self.stack.services[service_name].profile_id
         self.notify(f"Starting {service_name} with {profile}...")
         try:
+            self.notify(f"Verifying setup for {service_name} ({profile})...")
             log_path = self.executor.start_service(service_name, profile)
             self.refresh_stack_state(force=True)
             self.notify(f"Started {service_name}", severity="information")
@@ -589,6 +590,7 @@ class ElizaTUI(App):
         profile = self.stack.services[service_name].profile_id
         self.notify(f"Restarting {service_name} with {profile}...")
         try:
+            self.notify(f"Verifying setup for {service_name} ({profile})...")
             log_path = self.executor.restart_service(service_name, profile)
             self.refresh_stack_state(force=True)
             self.attach_logs(log_path)
@@ -689,6 +691,7 @@ class ElizaTUI(App):
 
         self.notify(f"Applying profile {selected_profile.name} to {service_name}...")
         try:
+            self.notify(f"Verifying setup for {service_name} ({selected_profile.name})...")
             log_path = self.executor.restart_service(service_name, selected_profile.name)
         except Exception as exc:
             self.notify(f"Failed to switch profile for {service_name}: {exc}", severity="error")
