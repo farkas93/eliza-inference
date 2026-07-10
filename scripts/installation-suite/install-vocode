@@ -25,11 +25,12 @@ uv pip install --python "$VOCODE_VENV/bin/python" -U \
   "fastapi>=0.115.0" \
   "uvicorn[standard]>=0.34.0" \
   "websockets>=14.0" \
+  "pydub>=0.25.1" \
   "vocode>=0.1.114a2"
 
 "$VOCODE_VENV/bin/python" - <<'PY'
 import importlib.metadata as md
-for package in ("fastapi", "uvicorn", "websockets", "vocode"):
+for package in ("fastapi", "uvicorn", "websockets", "pydub", "vocode"):
     try:
         print(f"{package}={md.version(package)}")
     except md.PackageNotFoundError:
