@@ -133,6 +133,8 @@ class ElizaTUI(App):
         self.active_log_path: pathlib.Path | None = None
         self.logs_visible = False
         self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
+        self._profile_snapshot: tuple[tuple[str, bool, bool], ...] = ()
+        self._model_inventory_snapshot: tuple[tuple[str, str, int, tuple[str, ...]], ...] = ()
         self._refreshing_model_inventory = False
 
     def compose(self) -> ComposeResult:
@@ -263,12 +265,39 @@ class ElizaTUI(App):
                 markers[profile_name] = "[bold red]MISS[/bold red]"
         return markers
 
+    @staticmethod
+    def _profile_snapshot_from_states(states: dict[str, ProfileState]) -> tuple[tuple[str, bool, bool], ...]:
+        return tuple(sorted((name, state.deployed, state.ready) for name, state in states.items()))
+
+    @staticmethod
+    def _model_snapshot_from_entries(
+        entries: list[ModelEntry],
+    ) -> tuple[tuple[str, str, int, tuple[str, ...]], ...]:
+        return tuple(
+            sorted((entry.path, entry.status, entry.size_bytes, entry.linked_profiles) for entry in entries)
+        )
+
     def _refresh_profile_list(self) -> None:
         profiles = sorted(self.stack.profiles.values(), key=lambda profile: profile.name)
-        self.query_one("#profile_list", ProfileList).update_data(profiles, self._profile_markers())
+        profile_list = self.query_one("#profile_list", ProfileList)
+        selected_profile_name = profile_list.get_selected_profile_name()
+        selected_index = profile_list.index
+        scroll_y = profile_list.scroll_y
+
+        profile_list.update_data(profiles, self._profile_markers())
+        profile_list.restore_selection(selected_profile_name, selected_index, scroll_y)
+
         if profiles:
+            selected_profile_name = profile_list.get_selected_profile_name()
+            selected_profile = None
+            if selected_profile_name:
+                selected_profile = self.stack.profiles.get(selected_profile_name)
+
+            if selected_profile is None:
+                selected_profile = profiles[0]
+
             if self._active_tab() == "profiles_tab":
-                self.query_one("#profile_inspector", ProfileInspector).update_profile(profiles[0])
+                self.query_one("#profile_inspector", ProfileInspector).update_profile(selected_profile)
 
     def _sorted_filtered_model_entries(self) -> list[ModelEntry]:
         filtered = self.model_entries
@@ -294,6 +323,12 @@ class ElizaTUI(App):
         return filtered
 
     def _refresh_model_table(self) -> None:
+        model_table = self.query_one("#model_table", ModelTable)
+        selected_model_path = model_table.get_selected_model_path()
+        selected_row_index = model_table.cursor_row
+        selected_column = model_table.cursor_column if model_table.cursor_column is not None else 0
+        scroll_y = model_table.scroll_y
+
         table_rows: list[dict[str, str]] = []
         for entry in self._sorted_filtered_model_entries():
             profiles = ", ".join(entry.linked_profiles) if entry.linked_profiles else "-"
@@ -307,10 +342,16 @@ class ElizaTUI(App):
                     "profiles": profiles,
                 }
             )
-        self.query_one("#model_table", ModelTable).update_data(table_rows)
+        model_table.update_data(
+            table_rows,
+            selected_model_path=selected_model_path,
+            selected_row_index=selected_row_index,
+            selected_column=selected_column,
+        )
+        model_table.scroll_to(y=scroll_y, animate=False, immediate=True)
 
-        if table_rows and self._active_tab() == "models_tab":
-            self._update_model_summary(table_rows[0]["path"])
+        if self._active_tab() == "models_tab":
+            self._update_model_summary(model_table.get_selected_model_path())
 
     def _refresh_service_table(self) -> None:
         service_table = self.query_one("#service_table", ServiceTable)
@@ -333,11 +374,25 @@ class ElizaTUI(App):
 
         self._refreshing_model_inventory = True
         try:
-            self.profile_states = self.model_manager.build_profile_states(self.stack.profiles, self.stack.services)
-            self.model_entries = self.model_manager.list_models(self.stack.profiles)
+            profile_states = self.model_manager.build_profile_states(self.stack.profiles, self.stack.services)
+            model_entries = self.model_manager.list_models(self.stack.profiles)
+
+            new_profile_snapshot = self._profile_snapshot_from_states(profile_states)
+            new_model_snapshot = self._model_snapshot_from_entries(model_entries)
+
+            profiles_changed = new_profile_snapshot != self._profile_snapshot
+            models_changed = new_model_snapshot != self._model_inventory_snapshot
+
+            self.profile_states = profile_states
+            self.model_entries = model_entries
             self.model_entries_by_path = {entry.path: entry for entry in self.model_entries}
-            self._refresh_profile_list()
-            self._refresh_model_table()
+            if profiles_changed:
+                self._refresh_profile_list()
+            if models_changed:
+                self._refresh_model_table()
+
+            self._profile_snapshot = new_profile_snapshot
+            self._model_inventory_snapshot = new_model_snapshot
         finally:
             self._refreshing_model_inventory = False
 

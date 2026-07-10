@@ -54,7 +54,7 @@ class ModelManager:
             "HOME": home,
             "MODEL_HOME": model_home,
             "HF_HOME": env.get("HF_HOME", os.path.join(model_home, "huggingface")),
-            "LLAMA_CACHE": env.get("LLAMA_CACHE", os.path.join(model_home, "llama")),
+            "LLAMA_CACHE": env.get("LLAMA_CACHE", os.path.join(model_home, "llamacpp_cache")),
             "DEFAULT_HOST": env.get("DEFAULT_HOST", "0.0.0.0"),
             "ELIZA_MEDIUM_PORT": env.get("ELIZA_MEDIUM_PORT", "8001"),
             "ELIZA_SMALL_PORT": env.get("ELIZA_SMALL_PORT", "8002"),
@@ -92,6 +92,7 @@ class ModelManager:
 
     def _expected_paths_for_profile(self, profile: Profile) -> List[pathlib.Path]:
         profile_env = self._load_profile_env(profile)
+        backend = profile_env.get("BACKEND", profile.backend)
         model_dir_raw = profile_env.get("MODEL_DIR", "")
         model_dir: pathlib.Path | None = None
         if model_dir_raw:
@@ -107,6 +108,11 @@ class ModelManager:
             value = profile_env.get(key)
             if value:
                 paths.append(pathlib.Path(self._resolve_value(value, profile_env)).resolve())
+
+        model_id = profile_env.get("MODEL_ID", "").strip()
+        if backend == "vllm" and model_id:
+            hf_home = self._resolve_value(profile_env.get("HF_HOME", self.env["HF_HOME"]), profile_env)
+            paths.append((pathlib.Path(hf_home) / "hub" / model_id).resolve())
 
         if not paths and model_dir is not None:
             paths.append(model_dir)
@@ -150,7 +156,11 @@ class ModelManager:
         for profile in profiles.values():
             expected_paths = self._expected_paths_for_profile(profile)
             ready = all(path.exists() for path in expected_paths) if expected_paths else False
-            model_location = str(expected_paths[0].parent) if expected_paths else "N/A"
+            if expected_paths:
+                first_path = expected_paths[0]
+                model_location = str(first_path if first_path.is_dir() else first_path.parent)
+            else:
+                model_location = "N/A"
 
             states[profile.name] = ProfileState(
                 profile_name=profile.name,

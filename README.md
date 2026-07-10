@@ -14,6 +14,17 @@ DGX Spark-first local inference stack exposing `eliza-small` for low-latency voi
 
 Services bind to `0.0.0.0` by default for LAN access. Do not expose them directly to the public internet.
 
+## Storage Paths
+
+By default, model and cache storage is configured as:
+
+- `MODEL_HOME="$HOME/models"`
+- `HF_HOME="$MODEL_HOME/huggingface"`
+- `LLAMA_CACHE="$MODEL_HOME/llamacpp_cache"`
+
+You can override these in `.env` for custom disk layouts (for example, pointing to a larger SSD or shared workspace).
+When overriding, keep in mind that profile readiness checks, downloads, and cache reuse all follow these values.
+
 ## Quick Start
 
 ```bash

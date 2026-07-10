@@ -93,9 +93,39 @@ class ProfileList(ListView):
             # ListItem expects a Widget (like Label) as its first argument
             self.append(ListItem(Label(label_text), id=item_id))
 
+    def restore_selection(
+        self,
+        selected_profile_name: str | None,
+        selected_index: int | None,
+        scroll_y: float,
+    ) -> None:
+        target_index: int | None = None
+        if selected_profile_name:
+            for index, item_id in enumerate(self._profile_by_item_id):
+                if self._profile_by_item_id[item_id] == selected_profile_name:
+                    target_index = index
+                    break
+
+        if target_index is None and selected_index is not None and self._profile_by_item_id:
+            target_index = min(max(selected_index, 0), len(self._profile_by_item_id) - 1)
+
+        if target_index is None and self._profile_by_item_id and self.index is None:
+            target_index = 0
+
+        self.index = target_index
+        self.scroll_to(y=scroll_y, animate=False, immediate=True)
+
     def get_profile_name_by_item_id(self, item_id: str | None) -> str | None:
         if item_id is None:
             return None
+        return self._profile_by_item_id.get(item_id)
+
+    def get_selected_profile_name(self) -> str | None:
+        if self.index is None:
+            return None
+        if self.index < 0 or self.index >= len(self._profile_by_item_id):
+            return None
+        item_id = list(self._profile_by_item_id.keys())[self.index]
         return self._profile_by_item_id.get(item_id)
 
 
@@ -112,10 +142,18 @@ class ModelTable(DataTable):
         self.add_columns("Name", "Status", "Size", "Location", "Profiles")
         self._columns_initialized = True
 
-    def update_data(self, entries: List[dict[str, str]]) -> None:
+    def update_data(
+        self,
+        entries: List[dict[str, str]],
+        selected_model_path: str = "",
+        selected_row_index: int | None = None,
+        selected_column: int = 0,
+    ) -> None:
         self._ensure_columns()
         self.clear(columns=False)
-        for entry in entries:
+
+        target_row = None
+        for row_index, entry in enumerate(entries):
             self.add_row(
                 entry["name"],
                 entry["status"],
@@ -123,6 +161,19 @@ class ModelTable(DataTable):
                 entry["path"],
                 entry["profiles"],
             )
+
+            if selected_model_path and entry["path"] == selected_model_path:
+                target_row = row_index
+
+        if target_row is None and selected_row_index is not None and entries:
+            target_row = min(max(selected_row_index, 0), len(entries) - 1)
+
+        if target_row is None and entries and self.cursor_row is None:
+            target_row = 0
+
+        if target_row is not None:
+            bounded_column = min(max(selected_column, 0), 4)
+            self.move_cursor(row=target_row, column=bounded_column, animate=False, scroll=False)
 
     def get_selected_model_name(self) -> str:
         try:
