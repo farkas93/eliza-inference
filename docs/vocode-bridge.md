@@ -12,7 +12,7 @@ Browser or test client
   -> transcript + assistant text + assistant audio events
 ```
 
-The bridge still does not import the `vocode` Python package. This keeps dependencies stable while validating the complete local `STT -> LLM -> TTS` path.
+The bridge now uses `vocode.turn_based.TurnBasedConversation` with local HTTP adapters for STT, `eliza-small`, and TTS.
 
 ## Environment
 
@@ -89,13 +89,12 @@ Bridge messages:
 { "type": "transcript", "text": "...", "is_final": true }
 { "type": "assistant_text", "text": "..." }
 { "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
-{ "type": "audio", "audio": "base64-wav", "mime_type": "audio/wav" }
 { "type": "turn_complete" }
 { "type": "closed" }
 { "type": "error", "message": "..." }
 ```
 
-`audio` is kept for backward compatibility; new clients should prefer `assistant_audio`.
+`synthesize` requests still return `{ "type": "audio", ... }` for prompt-generation utilities.
 
 ## Failure Smoke Tests
 
@@ -122,4 +121,9 @@ Use `--expect-error` to validate upstream failures:
 
 ## Health Endpoint
 
-`GET /health` now reports dependency reachability for STT, `eliza-small`, and TTS via each service's `/v1/models` endpoint. The top-level status becomes `degraded` if any dependency probe fails.
+`GET /health` reports dependency reachability for STT, `eliza-small`, and TTS via each service's `/v1/models` endpoint. The top-level status becomes `degraded` if any dependency probe fails.
+
+The health payload includes:
+
+- `mode: "vocode-turn-based-bridge"`
+- `engine: "vocode.turn_based.TurnBasedConversation"`

@@ -10,7 +10,7 @@ DGX Spark-first local inference stack exposing `eliza-small` for low-latency voi
 | `eliza-small` | llama.cpp | `unsloth/gemma-4-E2B-it-GGUF` | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
-| `vocode-bridge` | FastAPI WS bridge | local STT -> eliza-small -> TTS turn orchestration | `8021` |
+| `vocode-bridge` | FastAPI WS bridge | Vocode turn-based orchestration over local STT -> eliza-small -> TTS | `8021` |
 
 Services bind to `0.0.0.0` by default for LAN access. Do not expose them directly to the public internet.
 

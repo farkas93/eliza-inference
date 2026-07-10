@@ -13,8 +13,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydub import AudioSegment
+from vocode.turn_based.agent.base_agent import BaseAgent
+from vocode.turn_based.input_device.base_input_device import BaseInputDevice
+from vocode.turn_based.output_device.abstract_output_device import AbstractOutputDevice
+from vocode.turn_based.synthesizer.base_synthesizer import BaseSynthesizer
+from vocode.turn_based.transcriber.base_transcriber import BaseTranscriber
+from vocode.turn_based.turn_based_conversation import TurnBasedConversation
 
-app = FastAPI(title="Eliza Vocode Bridge", version="0.1.0")
+app = FastAPI(title="Eliza Vocode Bridge", version="0.2.0")
 
 
 def _stt_base_url() -> str:
@@ -159,6 +166,7 @@ def generate_assistant_text(user_text: str) -> str:
         body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
     except Exception as exc:
         raise RuntimeError(f"LLM request failed: {exc}") from exc
+
     result = json.loads(body.decode("utf-8"))
     choices = result.get("choices") or []
     if not choices:
@@ -212,14 +220,109 @@ def _service_status(name: str, base_url: str, model: str) -> dict[str, Any]:
         }
 
 
+class BridgeInputDevice(BaseInputDevice):
+    def __init__(self, sample_rate: int = 16000):
+        self.sample_rate = sample_rate
+        self._pcm = bytearray()
+        self.active = False
+
+    def set_sample_rate(self, sample_rate: int) -> None:
+        self.sample_rate = sample_rate
+
+    def start_listening(self):
+        self.active = True
+        self._pcm.clear()
+
+    def append_pcm(self, pcm_chunk: bytes) -> None:
+        if not self.active:
+            self.start_listening()
+        self._pcm.extend(pcm_chunk)
+
+    def has_audio(self) -> bool:
+        return len(self._pcm) > 0
+
+    def buffered_bytes(self) -> int:
+        return len(self._pcm)
+
+    def end_listening(self) -> AudioSegment:
+        self.active = False
+        wav_bytes = _pcm16_to_wav(bytes(self._pcm), self.sample_rate)
+        self._pcm.clear()
+        return AudioSegment.from_wav(io.BytesIO(wav_bytes))
+
+
+class BridgeTranscriber(BaseTranscriber):
+    def __init__(self):
+        self.last_result: dict[str, Any] = {}
+
+    def transcribe(self, audio_segment: AudioSegment) -> str:
+        wav_buffer = io.BytesIO()
+        audio_segment.export(wav_buffer, format="wav")
+        result = transcribe_wav(wav_buffer.getvalue())
+        self.last_result = result
+        return str(result.get("text", "")).strip()
+
+
+class BridgeAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(initial_message=None)
+        self.last_response = ""
+
+    def respond(self, human_input: str):
+        response = generate_assistant_text(human_input)
+        self.last_response = response
+        return response
+
+
+class BridgeSynthesizer(BaseSynthesizer):
+    def __init__(self):
+        self.last_audio_bytes = b""
+        self.last_mime_type = "audio/wav"
+
+    def synthesize(self, text) -> AudioSegment:
+        audio_bytes, mime_type = synthesize_text(str(text))
+        self.last_audio_bytes = audio_bytes
+        self.last_mime_type = mime_type
+        return AudioSegment.from_wav(io.BytesIO(audio_bytes))
+
+    async def async_synthesize(self, text) -> AudioSegment:
+        return self.synthesize(text)
+
+
+class BridgeOutputDevice(AbstractOutputDevice):
+    def __init__(self):
+        self.last_audio_bytes = b""
+
+    def send_audio(self, audio: AudioSegment) -> None:
+        wav_buffer = io.BytesIO()
+        audio.export(wav_buffer, format="wav")
+        self.last_audio_bytes = wav_buffer.getvalue()
+
+
 @dataclass
 class BridgeSession:
     session_id: str = field(default_factory=lambda: f"bridge_{uuid.uuid4().hex}")
     sample_rate: int = 16000
-    pcm: bytearray = field(default_factory=bytearray)
+    input_device: BridgeInputDevice = field(default_factory=BridgeInputDevice)
+    transcriber: BridgeTranscriber = field(default_factory=BridgeTranscriber)
+    agent: BridgeAgent = field(default_factory=BridgeAgent)
+    synthesizer: BridgeSynthesizer = field(default_factory=BridgeSynthesizer)
+    output_device: BridgeOutputDevice = field(default_factory=BridgeOutputDevice)
+    conversation: TurnBasedConversation | None = None
+
+    def ensure_conversation(self) -> TurnBasedConversation:
+        if self.conversation is None:
+            self.conversation = TurnBasedConversation(
+                input_device=self.input_device,
+                transcriber=self.transcriber,
+                agent=self.agent,
+                synthesizer=self.synthesizer,
+                output_device=self.output_device,
+            )
+        return self.conversation
 
     def reset_audio(self) -> None:
-        self.pcm.clear()
+        self.input_device.start_listening()
 
 
 @app.get("/health")
@@ -233,29 +336,18 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok" if all_ok else "degraded",
         "service": "vocode-bridge",
-        "mode": "websocket-turn-bridge",
+        "mode": "vocode-turn-based-bridge",
+        "engine": "vocode.turn_based.TurnBasedConversation",
         "dependencies": dependencies,
     }
 
 
-async def _emit_assistant_turn(websocket: WebSocket, assistant_text: str) -> None:
-    audio_bytes, mime_type = synthesize_text(assistant_text)
-    audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
-
+async def _emit_assistant_turn(websocket: WebSocket, assistant_text: str, audio_bytes: bytes, mime_type: str) -> None:
     await websocket.send_json({"type": "assistant_text", "text": assistant_text})
     await websocket.send_json(
         {
             "type": "assistant_audio",
-            "audio": audio_base64,
-            "mime_type": mime_type,
-        }
-    )
-
-    # Backward compatibility event for existing bridge tests/clients.
-    await websocket.send_json(
-        {
-            "type": "audio",
-            "audio": audio_base64,
+            "audio": base64.b64encode(audio_bytes).decode("ascii"),
             "mime_type": mime_type,
         }
     )
@@ -266,12 +358,15 @@ async def _emit_assistant_turn(websocket: WebSocket, assistant_text: str) -> Non
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     session = BridgeSession()
+    session.ensure_conversation()
+
     await websocket.send_json(
         {
             "type": "ready",
             "session_id": session.session_id,
-            "mode": "websocket-turn-bridge",
-            "note": "STT -> local LLM -> TTS bridge for local full-turn voice sessions.",
+            "mode": "vocode-turn-based-bridge",
+            "engine": "vocode.turn_based.TurnBasedConversation",
+            "note": "Native Vocode turn-based orchestration over local STT, eliza-small, and TTS services.",
         }
     )
 
@@ -289,41 +384,55 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 audio_b64 = str(message.get("audio") or "")
                 mime_type = str(message.get("mime_type") or message.get("mimeType") or "audio/pcm;rate=16000")
                 session.sample_rate = _parse_sample_rate(mime_type, session.sample_rate)
+                session.input_device.set_sample_rate(session.sample_rate)
                 if audio_b64:
-                    session.pcm.extend(base64.b64decode(audio_b64))
-                await websocket.send_json({"type": "audio_received", "bytes": len(session.pcm)})
+                    session.input_device.append_pcm(base64.b64decode(audio_b64))
+                await websocket.send_json({"type": "audio_received", "bytes": session.input_device.buffered_bytes()})
 
             elif message_type == "audio_input_end":
-                if not session.pcm:
+                if not session.input_device.has_audio():
                     await websocket.send_json({"type": "error", "message": "No audio buffered"})
                     continue
-                wav_bytes = _pcm16_to_wav(bytes(session.pcm), session.sample_rate)
-                session.reset_audio()
-                result = transcribe_wav(wav_bytes)
-                transcript_text = str(result.get("text", "")).strip()
+
+                session.ensure_conversation().end_speech_and_respond()
+                transcript_text = str(session.transcriber.last_result.get("text", "")).strip()
                 await websocket.send_json(
                     {
                         "type": "transcript",
                         "text": transcript_text,
                         "is_final": True,
-                        "language": result.get("language"),
-                        "duration": result.get("duration"),
+                        "language": session.transcriber.last_result.get("language"),
+                        "duration": session.transcriber.last_result.get("duration"),
                     }
                 )
+
                 if not transcript_text:
                     await websocket.send_json({"type": "error", "message": "STT returned an empty transcript"})
+                    session.reset_audio()
                     continue
 
-                assistant_text = generate_assistant_text(transcript_text)
-                await _emit_assistant_turn(websocket, assistant_text)
+                await _emit_assistant_turn(
+                    websocket,
+                    session.agent.last_response,
+                    session.output_device.last_audio_bytes,
+                    session.synthesizer.last_mime_type,
+                )
+                session.reset_audio()
 
             elif message_type in {"user_text", "user_message"}:
                 user_text = str(message.get("text") or "").strip()
                 if not user_text:
                     await websocket.send_json({"type": "error", "message": "Missing text"})
                     continue
-                assistant_text = generate_assistant_text(user_text)
-                await _emit_assistant_turn(websocket, assistant_text)
+
+                assistant_text = session.agent.respond(user_text)
+                session.output_device.send_audio(session.synthesizer.synthesize(assistant_text))
+                await _emit_assistant_turn(
+                    websocket,
+                    session.agent.last_response,
+                    session.output_device.last_audio_bytes,
+                    session.synthesizer.last_mime_type,
+                )
 
             elif message_type == "synthesize":
                 text = str(message.get("text") or "")

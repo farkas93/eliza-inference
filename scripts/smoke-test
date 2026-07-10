@@ -43,7 +43,12 @@ case "$SERVICE" in
     ;;
   vocode-bridge)
     source_profile
-    "$BASE_VENV/bin/python" "$ROOT_DIR/clients/audio/vocode_bridge_test.py" \
+    vocode_python="$(venv_python "$SERVICE")"
+    if [[ ! -x "$vocode_python" ]]; then
+      echo "Vocode venv missing. Run ./scripts/setup vocode first." >&2
+      exit 1
+    fi
+    "$vocode_python" "$ROOT_DIR/clients/audio/vocode_bridge_test.py" \
       --url "ws://127.0.0.1:${PORT:-8021}/ws"
     ;;
   *)
