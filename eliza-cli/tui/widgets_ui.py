@@ -6,8 +6,13 @@ from typing import List
 
 class ServiceTable(DataTable):
     """A table showing the current services in the stack."""
-    def update_data(self, services: List[Service]):
-        self.clear()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_initialized = False
+
+    def _ensure_columns(self) -> None:
+        if self._columns_initialized:
+            return
         self.add_columns(
             "Service",
             "Status",
@@ -17,7 +22,19 @@ class ServiceTable(DataTable):
             "Live Model",
             "Drift",
         )
-        for s in services:
+        self._columns_initialized = True
+
+    def update_data(
+        self,
+        services: List[Service],
+        selected_service_name: str = "",
+        selected_column: int = 0,
+    ) -> None:
+        self._ensure_columns()
+        self.clear(columns=False)
+
+        target_row = 0 if services else None
+        for row_index, s in enumerate(services):
             live_profile = s.live_profile_id or "-"
             drift = "YES" if s.drift else "NO"
             self.add_row(
@@ -29,6 +46,13 @@ class ServiceTable(DataTable):
                 s.live_model,
                 drift,
             )
+
+            if selected_service_name and s.name == selected_service_name:
+                target_row = row_index
+
+        if target_row is not None:
+            bounded_column = min(max(selected_column, 0), 6)
+            self.move_cursor(row=target_row, column=bounded_column, animate=False, scroll=False)
 
     def get_selected_service_name(self) -> str:
         """Returns the name of the selected service from the table."""

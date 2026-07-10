@@ -65,7 +65,14 @@ class ElizaTUI(App):
         self.set_interval(1, self.update_logs)
 
     def _refresh_service_table(self) -> None:
-        self.query_one("#service_table", ServiceTable).update_data(list(self.stack.services.values()))
+        service_table = self.query_one("#service_table", ServiceTable)
+        selected_service_name = service_table.get_selected_service_name()
+        selected_column = service_table.cursor_column or 0
+        service_table.update_data(
+            list(self.stack.services.values()),
+            selected_service_name=selected_service_name,
+            selected_column=selected_column,
+        )
 
     def refresh_stack_state(self) -> None:
         self.stack = self.engine.discover()
