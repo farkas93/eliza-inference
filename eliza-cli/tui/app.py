@@ -31,6 +31,9 @@ from .widgets.log_viewer import LogViewer
 class ElizaTUI(App):
     """The main ElizaTUI application."""
 
+    SHOW_HEADER = False
+    SHOW_FOOTER = False
+
     LOG_HEIGHT_DEFAULT = 12
     LOG_HEIGHT_MIN = 4
     LOG_HEIGHT_STEP = 1
