@@ -1,15 +1,19 @@
 import pathlib
-from textual.widgets import RichLog
+from textual.widgets import TextArea
 
-class LogViewer(RichLog):
+class LogViewer(TextArea):
     """A widget that displays streaming logs from a file."""
 
     def __init__(self, log_file_path: pathlib.Path, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(
+            "",
+            read_only=True,
+            soft_wrap=False,
+            show_cursor=False,
+            **kwargs,
+        )
         self.log_file_path = log_file_path
         self._last_position = 0
-        if hasattr(self, "auto_scroll"):
-            self.auto_scroll = False
 
     def set_log_file(self, log_file_path: pathlib.Path) -> None:
         """Sets a new log file and resets the reading position."""
@@ -32,11 +36,8 @@ class LogViewer(RichLog):
                 self._last_position = f.tell()
 
                 if new_lines:
-                    for line in new_lines:
-                        try:
-                            self.write(line.strip(), scroll_end=False)
-                        except TypeError:
-                            self.write(line.strip())
+                    new_text = "".join(new_lines)
+                    self.insert(new_text, location=self.document.end)
 
             if new_lines:
                 if should_follow:
@@ -44,4 +45,4 @@ class LogViewer(RichLog):
                 else:
                     self.scroll_to(y=scroll_y_before, animate=False, immediate=True)
         except Exception as e:
-            self.write(f"[red]Error reading logs: {e}[/red]")
+            self.insert(f"Error reading logs: {e}\n", location=self.document.end)

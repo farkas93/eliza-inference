@@ -437,17 +437,17 @@ class ElizaTUI(App):
         if tab == "services_tab":
             legend = (
                 "Services: i setup | s start | k stop | r restart | p swap profile "
-                "| l logs ({}) | ctrl+up/down logs height ({})"
+                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
             ).format(logs_status, logs_size)
         elif tab == "profiles_tab":
             legend = (
                 "Profiles: [LIVE]/[RDY]/[MISS] | arrows browse "
-                "| l logs ({}) | ctrl+up/down logs height ({})"
+                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
             ).format(logs_status, logs_size)
         else:
             legend = (
                 "Models: / filter | o sort({}) | d delete | c cleanup orphans "
-                "| l logs ({}) | ctrl+up/down logs height ({})"
+                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
             ).format(self.model_sort_mode, logs_status, logs_size)
         self.query_one("#context-legend", Static).update(legend)
 
