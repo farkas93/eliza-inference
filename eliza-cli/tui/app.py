@@ -7,6 +7,7 @@ import pathlib
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.events import Resize
 from textual.widgets import ListView
 from textual.widgets import Input, Static, TabbedContent, TabPane
 
@@ -29,6 +30,10 @@ from .widgets.log_viewer import LogViewer
 
 class ElizaTUI(App):
     """The main ElizaTUI application."""
+
+    LOG_HEIGHT_DEFAULT = 12
+    LOG_HEIGHT_MIN = 4
+    LOG_HEIGHT_STEP = 1
 
     CSS = """
     Screen {
@@ -110,6 +115,8 @@ class ElizaTUI(App):
         Binding("r", "restart_service", "Restart"),
         Binding("p", "change_profile", "Swap Profile"),
         Binding("l", "toggle_logs", "Toggle Logs"),
+        Binding("ctrl+up", "increase_log_height", "Logs Taller"),
+        Binding("ctrl+down", "decrease_log_height", "Logs Shorter"),
         Binding("d", "delete_model", "Delete Model"),
         Binding("c", "cleanup_models", "Cleanup Orphans"),
         Binding("o", "cycle_model_sort", "Sort Models"),
@@ -133,6 +140,7 @@ class ElizaTUI(App):
 
         self.active_log_path: pathlib.Path | None = None
         self.logs_visible = False
+        self.log_viewer_height = self.LOG_HEIGHT_DEFAULT
         self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
         self._profile_snapshot: tuple[tuple[str, bool, bool], ...] = ()
         self._model_inventory_snapshot: tuple[tuple[str, str, int, tuple[str, ...]], ...] = ()
@@ -168,6 +176,7 @@ class ElizaTUI(App):
 
         self.query_one("#service_table").focus()
         self._set_profile_inspector_visible(False)
+        self._apply_log_height()
         self._set_logs_visible(False)
         self._update_context_legend()
         self.update_monitor()
@@ -182,8 +191,26 @@ class ElizaTUI(App):
     def _set_logs_visible(self, visible: bool) -> None:
         self.logs_visible = visible
         log_viewer = self.query_one("#log_viewer", LogViewer)
+        self._apply_log_height()
         log_viewer.styles.display = "block" if visible else "none"
         self._update_context_legend()
+
+    def _max_log_height(self) -> int:
+        return max(self.LOG_HEIGHT_MIN, self.size.height - 8)
+
+    def _clamp_log_height(self, height: int) -> int:
+        return min(max(height, self.LOG_HEIGHT_MIN), self._max_log_height())
+
+    def _apply_log_height(self) -> None:
+        self.log_viewer_height = self._clamp_log_height(self.log_viewer_height)
+        log_viewer = self.query_one("#log_viewer", LogViewer)
+        log_viewer.styles.height = self.log_viewer_height
+
+    def on_resize(self, _: Resize) -> None:
+        clamped_height = self._clamp_log_height(self.log_viewer_height)
+        if clamped_height != self.log_viewer_height:
+            self.log_viewer_height = clamped_height
+            self._apply_log_height()
 
     def _set_profile_inspector_visible(self, visible: bool) -> None:
         inspector = self.query_one("#profile_inspector", ProfileInspector)
@@ -405,15 +432,23 @@ class ElizaTUI(App):
 
     def _update_context_legend(self) -> None:
         logs_status = "ON" if self.logs_visible else "OFF"
+        logs_size = str(self.log_viewer_height)
         tab = self._active_tab()
         if tab == "services_tab":
-            legend = "Services: i setup | s start | k stop | r restart | p swap profile | l logs ({})".format(logs_status)
+            legend = (
+                "Services: i setup | s start | k stop | r restart | p swap profile "
+                "| l logs ({}) | ctrl+up/down logs height ({})"
+            ).format(logs_status, logs_size)
         elif tab == "profiles_tab":
-            legend = "Profiles: [LIVE]/[RDY]/[MISS] | arrows browse | l logs ({})".format(logs_status)
+            legend = (
+                "Profiles: [LIVE]/[RDY]/[MISS] | arrows browse "
+                "| l logs ({}) | ctrl+up/down logs height ({})"
+            ).format(logs_status, logs_size)
         else:
             legend = (
-                "Models: / filter | o sort({}) | d delete | c cleanup orphans | l logs ({})"
-            ).format(self.model_sort_mode, logs_status)
+                "Models: / filter | o sort({}) | d delete | c cleanup orphans "
+                "| l logs ({}) | ctrl+up/down logs height ({})"
+            ).format(self.model_sort_mode, logs_status, logs_size)
         self.query_one("#context-legend", Static).update(legend)
 
     def _update_profile_inspector_by_item_id(self, item_id: str | None) -> None:
@@ -809,6 +844,16 @@ class ElizaTUI(App):
 
         self._set_logs_visible(True)
         self.update_logs()
+
+    def action_increase_log_height(self) -> None:
+        self.log_viewer_height += self.LOG_HEIGHT_STEP
+        self._apply_log_height()
+        self._update_context_legend()
+
+    def action_decrease_log_height(self) -> None:
+        self.log_viewer_height -= self.LOG_HEIGHT_STEP
+        self._apply_log_height()
+        self._update_context_legend()
 
 
 if __name__ == "__main__":
