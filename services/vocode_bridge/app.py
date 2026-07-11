@@ -259,6 +259,8 @@ def generate_assistant_response(
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
 
+    tools_rejected = False
+
     try:
         body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
     except urllib.error.HTTPError as exc:
@@ -270,6 +272,7 @@ def generate_assistant_response(
             try:
                 logger.info("Retrying LLM request without tools after HTTP 400")
                 body, _ = _post_json(f"{llm_base_url}/chat/completions", fallback_payload)
+                tools_rejected = True
             except urllib.error.HTTPError as fallback_exc:
                 logger.error("LLM HTTP error without tools: %s", _http_error_text(fallback_exc))
                 raise RuntimeError(f"LLM request failed: {_http_error_text(fallback_exc)}") from fallback_exc
@@ -310,6 +313,7 @@ def generate_assistant_response(
     return {
         "assistant_text": assistant_text,
         "tool_calls": tool_calls,
+        "tools_rejected": tools_rejected,
     }
 
 
@@ -396,6 +400,7 @@ class BridgeAgent(BaseAgent):
         self.tools: list[dict[str, Any]] = []
         self.tool_choice: Any | None = None
         self.system_prompt: str = _voice_system_prompt()
+        self.tools_disabled_reason: str | None = None
 
     def respond(self, human_input: str):
         result = generate_assistant_response(human_input, self.system_prompt, self.tools, self.tool_choice)
@@ -406,6 +411,13 @@ class BridgeAgent(BaseAgent):
             self.last_tool_calls = [item for item in raw_tool_calls if isinstance(item, dict)]
         else:
             self.last_tool_calls = []
+
+        if bool(result.get("tools_rejected")) and self.tools:
+            self.tools = []
+            self.tool_choice = None
+            self.tools_disabled_reason = "context_overflow"
+            logger.warning("Disabled tools for current session due to context overflow")
+
         return response
 
 
@@ -465,6 +477,7 @@ class BridgeSession:
         else:
             self.agent.tools = [item for item in (tools or []) if isinstance(item, dict)]
             self.agent.tool_choice = tool_choice
+        self.agent.tools_disabled_reason = None
 
         if isinstance(system_instruction, str) and system_instruction.strip():
             self.agent.system_prompt = system_instruction.strip()
@@ -539,6 +552,7 @@ async def _emit_assistant_turn_with_tools(
     audio_bytes: bytes,
     mime_type: str,
     tool_calls: list[dict[str, Any]],
+    tool_status: str | None,
 ) -> None:
     if assistant_text:
         await websocket.send_json({"type": "assistant_text", "text": assistant_text})
@@ -547,6 +561,10 @@ async def _emit_assistant_turn_with_tools(
         await websocket.send_json({"type": "assistant_tool_calls", "tool_calls": tool_calls})
         await websocket.send_json({"type": "assistant_waiting_tools"})
         return
+
+    if tool_status:
+        await websocket.send_json({"type": "assistant_tool_status", "status": tool_status})
+
     await websocket.send_json(
         {
             "type": "assistant_audio",
@@ -576,7 +594,8 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
     )
 
     if not transcript_text:
-        await websocket.send_json({"type": "error", "message": "STT returned an empty transcript"})
+        await websocket.send_json({"type": "no_speech_detected"})
+        await websocket.send_json({"type": "turn_complete"})
         session.reset_audio()
         return
 
@@ -588,6 +607,7 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
         session.output_device.last_audio_bytes,
         session.synthesizer.last_mime_type,
         session.agent.last_tool_calls,
+        session.agent.tools_disabled_reason,
     )
     session.reset_audio()
 
@@ -669,6 +689,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     session.output_device.last_audio_bytes,
                     session.synthesizer.last_mime_type,
                     session.agent.last_tool_calls,
+                    session.agent.tools_disabled_reason,
                 )
 
             elif message_type == "tool_context":
@@ -699,6 +720,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     session.output_device.last_audio_bytes,
                     session.synthesizer.last_mime_type,
                     [],
+                    session.agent.tools_disabled_reason,
                 )
 
             elif message_type == "synthesize":

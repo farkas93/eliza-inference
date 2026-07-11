@@ -119,7 +119,9 @@ Bridge messages:
 { "type": "assistant_text", "text": "..." }
 { "type": "assistant_tool_calls", "tool_calls": [...] }
 { "type": "assistant_waiting_tools" }
+{ "type": "assistant_tool_status", "status": "context_overflow" }
 { "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
+{ "type": "no_speech_detected" }
 { "type": "assistant_interrupted" }
 { "type": "turn_complete" }
 { "type": "closed" }
