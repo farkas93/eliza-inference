@@ -37,6 +37,7 @@ BRIDGE_VAD_SILENCE_MS=700
 BRIDGE_VAD_MIN_SPEECH_MS=300
 BRIDGE_TOOLS_MODE=auto
 BRIDGE_TOOL_CALL_FALLBACK_TEXT="I need to run a tool before I can answer."
+BRIDGE_LOG_LEVEL=DEBUG
 ```
 
 ## Start
@@ -148,6 +149,29 @@ Expected GenieTor session log lines:
 
 - `Connecting to local vocode bridge` with `wsUrl: ws://10.42.47.8:8021/ws`
 - `Connected to local vocode bridge`
+
+## Debug Logging
+
+For bridge logs, set:
+
+```bash
+BRIDGE_LOG_LEVEL=DEBUG
+```
+
+Then restart bridge and inspect:
+
+```bash
+./scripts/restart vocode-bridge --profile vocode/bridge-local
+./scripts/logs vocode-bridge
+```
+
+For GenieTor server logs, set in chart values:
+
+```yaml
+env:
+  LOG_LEVEL: DEBUG
+  LOG_CATEGORIES: SESSION,TOOL,AUDIO
+```
 
 ## Failure Smoke Tests
 

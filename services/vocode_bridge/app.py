@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -24,6 +25,18 @@ from vocode.turn_based.transcriber.base_transcriber import BaseTranscriber
 from vocode.turn_based.turn_based_conversation import TurnBasedConversation
 
 app = FastAPI(title="Eliza Vocode Bridge", version="0.2.0")
+
+
+def _bridge_log_level() -> int:
+    raw = os.environ.get("BRIDGE_LOG_LEVEL", "INFO").strip().upper()
+    return getattr(logging, raw, logging.INFO)
+
+
+logging.basicConfig(
+    level=_bridge_log_level(),
+    format="%(asctime)s %(levelname)s [vocode-bridge] %(message)s",
+)
+logger = logging.getLogger("vocode-bridge")
 
 
 def _stt_base_url() -> str:
@@ -145,6 +158,11 @@ def _multipart_body(fields: dict[str, str], file_bytes: bytes, filename: str) ->
 
 
 def _post_json(url: str, payload: dict[str, Any], timeout: int = 300) -> tuple[bytes, str]:
+    logger.debug(
+        "POST %s payload_keys=%s",
+        url,
+        sorted(payload.keys()),
+    )
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -228,6 +246,14 @@ def generate_assistant_response(
         "max_tokens": 120,
     }
 
+    logger.debug(
+        "LLM request model=%s tools=%s tool_choice=%s prompt_chars=%s",
+        payload.get("model"),
+        len(tools or []),
+        "set" if tool_choice is not None else "unset",
+        len(user_text),
+    )
+
     if _tools_mode() != "off" and tools:
         payload["tools"] = tools
         if tool_choice is not None:
@@ -236,19 +262,24 @@ def generate_assistant_response(
     try:
         body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
     except urllib.error.HTTPError as exc:
+        logger.warning("LLM HTTP error with tools: %s", _http_error_text(exc))
         if exc.code == 400 and "tools" in payload:
             fallback_payload = dict(payload)
             fallback_payload.pop("tools", None)
             fallback_payload.pop("tool_choice", None)
             try:
+                logger.info("Retrying LLM request without tools after HTTP 400")
                 body, _ = _post_json(f"{llm_base_url}/chat/completions", fallback_payload)
             except urllib.error.HTTPError as fallback_exc:
+                logger.error("LLM HTTP error without tools: %s", _http_error_text(fallback_exc))
                 raise RuntimeError(f"LLM request failed: {_http_error_text(fallback_exc)}") from fallback_exc
             except Exception as fallback_exc:
+                logger.exception("LLM request failed during fallback request")
                 raise RuntimeError(f"LLM request failed: {fallback_exc}") from fallback_exc
         else:
             raise RuntimeError(f"LLM request failed: {_http_error_text(exc)}") from exc
     except Exception as exc:
+        logger.exception("LLM request failed")
         raise RuntimeError(f"LLM request failed: {exc}") from exc
 
     result = json.loads(body.decode("utf-8"))
@@ -273,6 +304,8 @@ def generate_assistant_response(
 
     if not assistant_text:
         raise RuntimeError("LLM returned an empty assistant response")
+
+    logger.debug("LLM response text_chars=%s tool_calls=%s", len(assistant_text), len(tool_calls))
 
     return {
         "assistant_text": assistant_text,
@@ -510,6 +543,7 @@ async def _emit_assistant_turn_with_tools(
     if assistant_text:
         await websocket.send_json({"type": "assistant_text", "text": assistant_text})
     if tool_calls:
+        logger.info("Emitting assistant tool calls count=%s", len(tool_calls))
         await websocket.send_json({"type": "assistant_tool_calls", "tool_calls": tool_calls})
         await websocket.send_json({"type": "assistant_waiting_tools"})
         return
@@ -530,6 +564,7 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
 
     session.ensure_conversation().end_speech_and_respond()
     transcript_text = str(session.transcriber.last_result.get("text", "")).strip()
+    logger.info("Audio turn processed transcript_chars=%s", len(transcript_text))
     await websocket.send_json(
         {
             "type": "transcript",
@@ -562,6 +597,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     session = BridgeSession()
     session.ensure_conversation()
+    logger.info("WebSocket session connected session_id=%s", session.session_id)
 
     await websocket.send_json(
         {
@@ -583,6 +619,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive_json()
             message_type = message.get("type")
+            logger.debug("Received message type=%s", message_type)
 
             if message_type == "start":
                 session.session_id = str(message.get("session_id") or session.session_id)
@@ -603,6 +640,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "audio_received", "bytes": session.input_device.buffered_bytes()})
 
                 if pcm_chunk and session.should_finalize_from_chunk(pcm_chunk):
+                    logger.info(
+                        "VAD finalized turn speech_ms=%.1f silence_ms=%.1f threshold=%.1f",
+                        session.speech_ms,
+                        session.trailing_silence_ms,
+                        session.vad_rms_threshold,
+                    )
                     await _process_audio_turn(websocket, session)
 
             elif message_type == "audio_input_end":
@@ -639,6 +682,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "message": "Missing tool results"})
                     continue
 
+                logger.info("Received tool results count=%s", len(results))
+
                 tool_result_prompt = (
                     "Original user request:\n"
                     f"{session.last_user_text or '(unknown)'}\n\n"
@@ -671,6 +716,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             elif message_type == "stop":
+                logger.info("Stop requested session_id=%s", session.session_id)
                 await websocket.send_json({"type": "closed"})
                 await websocket.close()
                 return
@@ -679,7 +725,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "error", "message": f"Unknown message type: {message_type}"})
 
     except WebSocketDisconnect:
+        logger.info("WebSocket disconnected session_id=%s", session.session_id)
         return
     except Exception as exc:
+        logger.exception("WebSocket session error session_id=%s", session.session_id)
         await websocket.send_json({"type": "error", "message": str(exc)})
         await websocket.close()
