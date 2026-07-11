@@ -154,6 +154,16 @@ def _post_json(url: str, payload: dict[str, Any], timeout: int = 300) -> tuple[b
         return response.read(), response.headers.get_content_type()
 
 
+def _http_error_text(exc: urllib.error.HTTPError) -> str:
+    try:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+        if body:
+            return f"HTTP {exc.code}: {body}"
+    except Exception:
+        pass
+    return f"HTTP {exc.code}"
+
+
 def _get_json(url: str, timeout: int = 5) -> dict[str, Any]:
     request = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -225,6 +235,19 @@ def generate_assistant_response(
 
     try:
         body, _ = _post_json(f"{llm_base_url}/chat/completions", payload)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 400 and "tools" in payload:
+            fallback_payload = dict(payload)
+            fallback_payload.pop("tools", None)
+            fallback_payload.pop("tool_choice", None)
+            try:
+                body, _ = _post_json(f"{llm_base_url}/chat/completions", fallback_payload)
+            except urllib.error.HTTPError as fallback_exc:
+                raise RuntimeError(f"LLM request failed: {_http_error_text(fallback_exc)}") from fallback_exc
+            except Exception as fallback_exc:
+                raise RuntimeError(f"LLM request failed: {fallback_exc}") from fallback_exc
+        else:
+            raise RuntimeError(f"LLM request failed: {_http_error_text(exc)}") from exc
     except Exception as exc:
         raise RuntimeError(f"LLM request failed: {exc}") from exc
 
