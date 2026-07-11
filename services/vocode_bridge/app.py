@@ -200,6 +200,7 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
 
 def generate_assistant_response(
     user_text: str,
+    system_prompt: str,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: Any | None = None,
 ) -> dict[str, Any]:
@@ -209,7 +210,7 @@ def generate_assistant_response(
         "messages": [
             {
                 "role": "system",
-                "content": _voice_system_prompt(),
+                "content": system_prompt,
             },
             {"role": "user", "content": user_text},
         ],
@@ -338,9 +339,10 @@ class BridgeAgent(BaseAgent):
         self.last_tool_calls: list[dict[str, Any]] = []
         self.tools: list[dict[str, Any]] = []
         self.tool_choice: Any | None = None
+        self.system_prompt: str = _voice_system_prompt()
 
     def respond(self, human_input: str):
-        result = generate_assistant_response(human_input, self.tools, self.tool_choice)
+        result = generate_assistant_response(human_input, self.system_prompt, self.tools, self.tool_choice)
         response = str(result.get("assistant_text") or "").strip()
         self.last_response = response
         raw_tool_calls = result.get("tool_calls")
@@ -393,15 +395,23 @@ class BridgeSession:
     speech_active: bool = False
     speech_ms: float = 0.0
     trailing_silence_ms: float = 0.0
+    last_user_text: str = ""
 
-    def set_tool_context(self, tools: list[dict[str, Any]] | None, tool_choice: Any | None = None) -> None:
+    def set_tool_context(
+        self,
+        tools: list[dict[str, Any]] | None,
+        tool_choice: Any | None = None,
+        system_instruction: str | None = None,
+    ) -> None:
         if _tools_mode() == "off":
             self.agent.tools = []
             self.agent.tool_choice = None
-            return
+        else:
+            self.agent.tools = [item for item in (tools or []) if isinstance(item, dict)]
+            self.agent.tool_choice = tool_choice
 
-        self.agent.tools = [item for item in (tools or []) if isinstance(item, dict)]
-        self.agent.tool_choice = tool_choice
+        if isinstance(system_instruction, str) and system_instruction.strip():
+            self.agent.system_prompt = system_instruction.strip()
 
     def ensure_conversation(self) -> TurnBasedConversation:
         if self.conversation is None:
@@ -474,9 +484,12 @@ async def _emit_assistant_turn_with_tools(
     mime_type: str,
     tool_calls: list[dict[str, Any]],
 ) -> None:
-    await websocket.send_json({"type": "assistant_text", "text": assistant_text})
+    if assistant_text:
+        await websocket.send_json({"type": "assistant_text", "text": assistant_text})
     if tool_calls:
         await websocket.send_json({"type": "assistant_tool_calls", "tool_calls": tool_calls})
+        await websocket.send_json({"type": "assistant_waiting_tools"})
+        return
     await websocket.send_json(
         {
             "type": "assistant_audio",
@@ -508,6 +521,8 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
         await websocket.send_json({"type": "error", "message": "STT returned an empty transcript"})
         session.reset_audio()
         return
+
+    session.last_user_text = transcript_text
 
     await _emit_assistant_turn_with_tools(
         websocket,
@@ -548,7 +563,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             if message_type == "start":
                 session.session_id = str(message.get("session_id") or session.session_id)
-                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
+                system_instruction = message.get("system_instruction") or message.get("systemInstruction")
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"), system_instruction)
                 session.reset_audio()
                 await websocket.send_json({"type": "started", "session_id": session.session_id})
 
@@ -575,7 +591,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "message": "Missing text"})
                     continue
 
-                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
+                system_instruction = message.get("system_instruction") or message.get("systemInstruction")
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"), system_instruction)
+                session.last_user_text = user_text
 
                 assistant_text = session.agent.respond(user_text)
                 session.output_device.send_audio(session.synthesizer.synthesize(assistant_text))
@@ -588,8 +606,32 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             elif message_type == "tool_context":
-                session.set_tool_context(message.get("tools"), message.get("tool_choice"))
+                system_instruction = message.get("system_instruction") or message.get("systemInstruction")
+                session.set_tool_context(message.get("tools"), message.get("tool_choice"), system_instruction)
                 await websocket.send_json({"type": "tool_context_updated", "tool_count": len(session.agent.tools)})
+
+            elif message_type == "tool_result":
+                results = message.get("results")
+                if not isinstance(results, list):
+                    await websocket.send_json({"type": "error", "message": "Missing tool results"})
+                    continue
+
+                tool_result_prompt = (
+                    "Original user request:\n"
+                    f"{session.last_user_text or '(unknown)'}\n\n"
+                    "Tool results:\n"
+                    f"{json.dumps(results, ensure_ascii=True)}\n\n"
+                    "Use the tool results to answer the user request concisely."
+                )
+                assistant_text = session.agent.respond(tool_result_prompt)
+                session.output_device.send_audio(session.synthesizer.synthesize(assistant_text))
+                await _emit_assistant_turn_with_tools(
+                    websocket,
+                    session.agent.last_response,
+                    session.output_device.last_audio_bytes,
+                    session.synthesizer.last_mime_type,
+                    [],
+                )
 
             elif message_type == "synthesize":
                 text = str(message.get("text") or "")

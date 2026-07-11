@@ -97,11 +97,13 @@ Client messages:
 
 ```json
 { "type": "start", "session_id": "optional-id" }
+{ "type": "start", "session_id": "optional-id", "system_instruction": "...", "tools": [...], "tool_choice": "auto" }
 { "type": "audio_input", "audio": "base64-pcm16", "mime_type": "audio/pcm;rate=16000" }
 { "type": "audio_input_end" }
 { "type": "user_text", "text": "Hello" }
 { "type": "user_text", "text": "Hello", "tools": [...], "tool_choice": "auto" }
-{ "type": "tool_context", "tools": [...], "tool_choice": "auto" }
+{ "type": "tool_context", "tools": [...], "tool_choice": "auto", "system_instruction": "..." }
+{ "type": "tool_result", "results": [{ "id": "call-id", "name": "tool_name", "response": {...} }] }
 { "type": "synthesize", "text": "Hello." }
 { "type": "stop" }
 ```
@@ -115,6 +117,7 @@ Bridge messages:
 { "type": "transcript", "text": "...", "is_final": true }
 { "type": "assistant_text", "text": "..." }
 { "type": "assistant_tool_calls", "tool_calls": [...] }
+{ "type": "assistant_waiting_tools" }
 { "type": "assistant_audio", "audio": "base64-wav", "mime_type": "audio/wav" }
 { "type": "assistant_interrupted" }
 { "type": "turn_complete" }
