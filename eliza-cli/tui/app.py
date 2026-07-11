@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 import os
 import pathlib
+import queue
+import re
+import threading
+import time
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -37,6 +41,12 @@ class ElizaTUI(App):
     LOG_HEIGHT_DEFAULT = 12
     LOG_HEIGHT_MIN = 4
     LOG_HEIGHT_STEP = 1
+    READY_TIMEOUT_SECONDS = 120
+
+    SPINNER_FRAMES = ("|", "/", "-", "\\")
+
+    CONTEXT_LIMIT_RE = re.compile(r"n_ctx_slot\s*=\s*(\d+)")
+    CONTEXT_TOKENS_RE = re.compile(r"n_tokens\s*=\s*(\d+)")
 
     CSS = """
     Screen {
@@ -68,6 +78,13 @@ class ElizaTUI(App):
         height: 1;
         padding: 0 1;
         background: $boost;
+        color: $text;
+    }
+
+    #activity-strip {
+        height: 1;
+        padding: 0 1;
+        background: $surface;
         color: $text;
     }
 
@@ -148,6 +165,17 @@ class ElizaTUI(App):
         self._profile_snapshot: tuple[tuple[str, bool, bool], ...] = ()
         self._model_inventory_snapshot: tuple[tuple[str, str, int, tuple[str, ...]], ...] = ()
         self._refreshing_model_inventory = False
+        self._events: queue.Queue[tuple[str, dict[str, str]]] = queue.Queue()
+        self._operation_thread: threading.Thread | None = None
+        self._operation_service_name: str | None = None
+        self._operation_action: str | None = None
+        self._activity_message = "Idle"
+        self._activity_busy = False
+        self._activity_started_at = 0.0
+        self._activity_severity = "information"
+        self._spinner_index = 0
+        self._context_by_service: dict[str, tuple[int, int]] = {}
+        self._last_warning = ""
 
     def compose(self) -> ComposeResult:
         with Container(id="main-container"):
@@ -156,6 +184,7 @@ class ElizaTUI(App):
                 yield Static("q Quit", id="top-quit")
 
             yield Static(id="monitor-strip")
+            yield Static(id="activity-strip")
 
             with Horizontal(id="content-row"):
                 with TabbedContent(id="main-tabs"):
@@ -183,10 +212,12 @@ class ElizaTUI(App):
         self._set_logs_visible(False)
         self._update_context_legend()
         self.update_monitor()
+        self._render_activity_strip()
 
         self.set_interval(3, self.refresh_stack_state)
         self.set_interval(2, self.update_monitor)
         self.set_interval(1, self.update_logs)
+        self.set_interval(0.25, self._process_events)
 
     def _active_tab(self) -> str:
         return self.query_one("#main-tabs", TabbedContent).active or "services_tab"
@@ -224,6 +255,188 @@ class ElizaTUI(App):
         for key, value in details:
             lines.append(f"[bold]{key}:[/bold] {value}")
         self.query_one("#profile_inspector", ProfileInspector).update("\n".join(lines))
+
+    @staticmethod
+    def _format_elapsed(seconds: float) -> str:
+        elapsed = max(0, int(seconds))
+        minutes, sec = divmod(elapsed, 60)
+        return f"{minutes:02d}:{sec:02d}"
+
+    def _selected_service_name(self) -> str | None:
+        service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
+        return service_name or None
+
+    @staticmethod
+    def _human_tokens(token_count: int) -> str:
+        if token_count >= 1000:
+            return f"{token_count / 1000:.1f}k"
+        return str(token_count)
+
+    def _context_status_text(self, service_name: str | None) -> str:
+        if not service_name:
+            return ""
+        context = self._context_by_service.get(service_name)
+        if not context:
+            return ""
+        used, limit = context
+        if limit <= 0:
+            return ""
+        return f"Ctx {self._human_tokens(used)} / {self._human_tokens(limit)}"
+
+    def _set_activity(self, message: str, busy: bool, severity: str = "information") -> None:
+        if busy and not self._activity_busy:
+            self._activity_started_at = time.monotonic()
+            self._spinner_index = 0
+        self._activity_busy = busy
+        self._activity_message = message
+        self._activity_severity = severity
+        self._render_activity_strip()
+
+    def _render_activity_strip(self) -> None:
+        spinner = "*"
+        elapsed = ""
+        if self._activity_busy:
+            spinner = self.SPINNER_FRAMES[self._spinner_index % len(self.SPINNER_FRAMES)]
+            elapsed = f" | {self._format_elapsed(time.monotonic() - self._activity_started_at)}"
+            self._spinner_index += 1
+
+        service_name = self._operation_service_name or self._selected_service_name()
+        context_suffix = self._context_status_text(service_name)
+        warning_suffix = self._last_warning
+
+        suffix_parts = [part for part in (context_suffix, warning_suffix) if part]
+        suffix = f" | {' | '.join(suffix_parts)}" if suffix_parts else ""
+
+        if self._activity_busy:
+            prefix = "RUN"
+        elif self._activity_severity == "error":
+            prefix = "ERR"
+        elif self._activity_severity == "warning":
+            prefix = "WARN"
+        else:
+            prefix = "OK"
+        line = f"{prefix} {spinner} {self._activity_message}{elapsed}{suffix}"
+        self.query_one("#activity-strip", Static).update(line)
+
+    def _service_operation_active(self) -> bool:
+        return self._operation_thread is not None and self._operation_thread.is_alive()
+
+    def _enqueue_progress(self, action: str, service_name: str, message: str) -> None:
+        self._events.put(
+            (
+                "progress",
+                {
+                    "action": action,
+                    "service_name": service_name,
+                    "message": message,
+                },
+            )
+        )
+
+    def _launch_service_operation(self, action: str, service_name: str, profile: str, health_url: str) -> None:
+        if self._service_operation_active():
+            self.notify("Another service operation is still running", severity="warning")
+            return
+
+        self._operation_service_name = service_name
+        self._operation_action = action
+        self._last_warning = ""
+        self._set_activity(f"{service_name} {action}: queued", busy=True)
+
+        def worker() -> None:
+            try:
+                progress_callback = lambda message: self._enqueue_progress(action, service_name, message)
+
+                if action == "start":
+                    log_path = self.executor.start_service(
+                        service_name,
+                        profile,
+                        health_url=health_url,
+                        progress_callback=progress_callback,
+                        wait_for_health=True,
+                        ready_timeout_seconds=self.READY_TIMEOUT_SECONDS,
+                    )
+                elif action == "restart":
+                    log_path = self.executor.restart_service(
+                        service_name,
+                        profile,
+                        health_url=health_url,
+                        progress_callback=progress_callback,
+                        wait_for_health=True,
+                        ready_timeout_seconds=self.READY_TIMEOUT_SECONDS,
+                    )
+                elif action == "setup":
+                    self.executor.ensure_service_ready(service_name, profile, progress_callback=progress_callback)
+                    log_path = ""
+                else:
+                    raise RuntimeError(f"Unknown service action: {action}")
+
+                self._events.put(
+                    (
+                        "success",
+                        {
+                            "action": action,
+                            "service_name": service_name,
+                            "profile": profile,
+                            "log_path": log_path,
+                        },
+                    )
+                )
+            except Exception as exc:
+                self._events.put(
+                    (
+                        "error",
+                        {
+                            "action": action,
+                            "service_name": service_name,
+                            "message": str(exc),
+                        },
+                    )
+                )
+
+        self._operation_thread = threading.Thread(target=worker, daemon=True)
+        self._operation_thread.start()
+
+    def _process_events(self) -> None:
+        handled = False
+        while True:
+            try:
+                event_type, payload = self._events.get_nowait()
+            except queue.Empty:
+                break
+
+            handled = True
+            action = payload.get("action", "")
+            service_name = payload.get("service_name", "")
+            if event_type == "progress":
+                message = payload.get("message", "Working")
+                self._set_activity(f"{service_name} {action}: {message}", busy=True)
+            elif event_type == "success":
+                log_path = payload.get("log_path", "")
+                self.refresh_stack_state(force=True)
+                if log_path:
+                    self.attach_logs(log_path)
+                if action == "setup":
+                    self.refresh_model_inventory()
+                    self.notify(f"Setup complete for {service_name}", severity="information")
+                elif action == "start":
+                    self.notify(f"Started {service_name}", severity="information")
+                elif action == "restart":
+                    self.notify(f"Restarted {service_name}", severity="information")
+                self._set_activity(f"{service_name} {action}: ready", busy=False, severity="information")
+                self._operation_service_name = None
+                self._operation_action = None
+                self._operation_thread = None
+            elif event_type == "error":
+                message = payload.get("message", "unknown error")
+                self.notify(f"Failed to {action} {service_name}: {message}", severity="error")
+                self._set_activity(f"{service_name} {action}: failed", busy=False, severity="error")
+                self._operation_service_name = None
+                self._operation_action = None
+                self._operation_thread = None
+
+        if not handled:
+            self._render_activity_strip()
 
     def _selected_service_log_path(self) -> pathlib.Path | None:
         if self._active_tab() != "services_tab":
@@ -440,7 +653,7 @@ class ElizaTUI(App):
         if tab == "services_tab":
             legend = (
                 "Services: i setup | s start | k stop | r restart | p swap profile "
-                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
+                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs | activity strip shows live phases"
             ).format(logs_status, logs_size)
         elif tab == "profiles_tab":
             legend = (
@@ -507,9 +720,59 @@ class ElizaTUI(App):
         display = f"CPU {stats.cpu_percent:5.1f}% | RAM {stats.memory_percent:5.1f}% | {disk_text} | {models_text} | {gpu_text}"
         self.query_one("#monitor-strip", Static).update(display)
 
+    def _active_log_service_name(self) -> str | None:
+        if self.active_log_path is None:
+            return None
+        return self.active_log_path.stem
+
+    def _consume_log_lines(self, lines: list[str]) -> None:
+        service_name = self._active_log_service_name()
+        if not service_name:
+            return
+
+        context_used = None
+        context_limit = None
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            lower_line = line.lower()
+
+            if "loading model" in lower_line and self._activity_busy and self._operation_service_name == service_name:
+                self._set_activity(f"{service_name} {self._operation_action}: Loading model", busy=True)
+            elif "llama_server: model loaded" in lower_line and self._activity_busy and self._operation_service_name == service_name:
+                self._set_activity(f"{service_name} {self._operation_action}: Model loaded", busy=True)
+            elif "llama_server: listening on" in lower_line and self._activity_busy and self._operation_service_name == service_name:
+                self._set_activity(f"{service_name} {self._operation_action}: Waiting for health", busy=True)
+
+            limit_match = self.CONTEXT_LIMIT_RE.search(line)
+            if limit_match:
+                context_limit = int(limit_match.group(1))
+
+            token_match = self.CONTEXT_TOKENS_RE.search(line)
+            if token_match:
+                context_used = int(token_match.group(1))
+
+            if "no_speech_detected" in lower_line or "empty transcript" in lower_line:
+                warning_text = "No speech detected (empty STT transcript)"
+                if self._last_warning != warning_text:
+                    self._last_warning = warning_text
+                    self.notify("No speech detected, try speaking louder or longer", severity="warning")
+                    if not self._activity_busy:
+                        self._set_activity("Voice turn completed with no speech", busy=False, severity="warning")
+
+        if context_used is not None or context_limit is not None:
+            current_used, current_limit = self._context_by_service.get(service_name, (0, 0))
+            if context_used is None:
+                context_used = current_used
+            if context_limit is None:
+                context_limit = current_limit
+            self._context_by_service[service_name] = (context_used, context_limit)
+
     def update_logs(self) -> None:
         if self.logs_visible and self.active_log_path:
-            self.query_one("#log_viewer", LogViewer).update_logs()
+            new_lines = self.query_one("#log_viewer", LogViewer).update_logs()
+            if new_lines:
+                self._consume_log_lines(new_lines)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.control.id == "profile_list":
@@ -590,15 +853,9 @@ class ElizaTUI(App):
             return
 
         profile = self.stack.services[service_name].profile_id
-        self.notify(f"Starting {service_name} with {profile}...")
-        try:
-            self.notify(f"Verifying setup for {service_name} ({profile})...")
-            log_path = self.executor.start_service(service_name, profile)
-            self.refresh_stack_state(force=True)
-            self.notify(f"Started {service_name}", severity="information")
-            self.attach_logs(log_path)
-        except Exception as exc:
-            self.notify(f"Failed to start {service_name}: {exc}", severity="error")
+        health_url = self.stack.services[service_name].health_url
+        self.notify(f"Starting {service_name} with {profile}...", severity="information")
+        self._launch_service_operation("start", service_name, profile, health_url)
 
     def action_setup_service(self) -> None:
         if self._active_tab() != "services_tab":
@@ -610,16 +867,16 @@ class ElizaTUI(App):
             return
 
         profile = self.stack.services[service_name].profile_id
-        self.notify(f"Running setup for {service_name} ({profile})...")
-        try:
-            self.executor.ensure_service_ready(service_name, profile)
-            self.refresh_model_inventory()
-            self.notify(f"Setup complete for {service_name}", severity="information")
-        except Exception as exc:
-            self.notify(f"Setup failed for {service_name}: {exc}", severity="error")
+        health_url = self.stack.services[service_name].health_url
+        self.notify(f"Running setup for {service_name} ({profile})...", severity="information")
+        self._launch_service_operation("setup", service_name, profile, health_url)
 
     def action_stop_service(self) -> None:
         if self._active_tab() != "services_tab":
+            return
+
+        if self._service_operation_active():
+            self.notify("Wait for the active operation to finish", severity="warning")
             return
 
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
@@ -632,6 +889,7 @@ class ElizaTUI(App):
             self.executor.stop_service(service_name)
             self.refresh_stack_state(force=True)
             self.notify(f"Stopped {service_name}", severity="information")
+            self._set_activity(f"{service_name} stopped", busy=False, severity="information")
         except Exception as exc:
             self.notify(f"Failed to stop {service_name}: {exc}", severity="error")
 
@@ -645,15 +903,9 @@ class ElizaTUI(App):
             return
 
         profile = self.stack.services[service_name].profile_id
-        self.notify(f"Restarting {service_name} with {profile}...")
-        try:
-            self.notify(f"Verifying setup for {service_name} ({profile})...")
-            log_path = self.executor.restart_service(service_name, profile)
-            self.refresh_stack_state(force=True)
-            self.attach_logs(log_path)
-            self.notify(f"Restarted {service_name}", severity="information")
-        except Exception as exc:
-            self.notify(f"Failed to restart {service_name}: {exc}", severity="error")
+        health_url = self.stack.services[service_name].health_url
+        self.notify(f"Restarting {service_name} with {profile}...", severity="information")
+        self._launch_service_operation("restart", service_name, profile, health_url)
 
     def action_change_profile(self) -> None:
         if self._active_tab() != "services_tab":
@@ -746,18 +998,10 @@ class ElizaTUI(App):
             self.notify(f"{service_name} already uses {selected_profile.name}", severity="information")
             return
 
-        self.notify(f"Applying profile {selected_profile.name} to {service_name}...")
-        try:
-            self.notify(f"Verifying setup for {service_name} ({selected_profile.name})...")
-            log_path = self.executor.restart_service(service_name, selected_profile.name)
-        except Exception as exc:
-            self.notify(f"Failed to switch profile for {service_name}: {exc}", severity="error")
-            return
-
+        self.notify(f"Applying profile {selected_profile.name} to {service_name}...", severity="information")
         self.stack.services[service_name] = replace(current_service, profile_id=selected_profile.name)
-        self.refresh_stack_state(force=True)
-        self.attach_logs(log_path)
-        self.notify(f"{service_name} now uses {selected_profile.name}", severity="information")
+        health_url = self.stack.services[service_name].health_url
+        self._launch_service_operation("restart", service_name, selected_profile.name, health_url)
 
     def action_delete_model(self) -> None:
         if self._active_tab() != "models_tab":

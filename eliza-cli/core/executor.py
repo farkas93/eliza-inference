@@ -1,7 +1,10 @@
 import subprocess
 import pathlib
 import logging
-from typing import List
+import time
+from typing import Callable, List
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,33 @@ class Executor:
         except Exception as e:
             logger.error(f"Unexpected error running command: {e}")
             raise ExecutionError(str(e))
+
+    @staticmethod
+    def _emit_progress(progress_callback: Callable[[str], None] | None, message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(message)
+
+    def _wait_for_health(
+        self,
+        health_url: str,
+        timeout_seconds: int,
+        progress_callback: Callable[[str], None] | None,
+    ) -> None:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            request = Request(health_url, method="GET")
+            try:
+                with urlopen(request, timeout=1.5) as response:
+                    if 200 <= response.status < 300:
+                        self._emit_progress(progress_callback, "Ready")
+                        return
+            except (URLError, TimeoutError, ValueError):
+                pass
+
+            self._emit_progress(progress_callback, "Waiting for health")
+            time.sleep(1.0)
+
+        raise ExecutionError(f"Service did not become healthy within {timeout_seconds}s: {health_url}")
 
     def _profile_path(self, profile_id: str) -> pathlib.Path:
         profile_path = self.root_dir / "configs" / "profiles" / f"{profile_id}.env"
@@ -75,25 +105,58 @@ class Executor:
 
         return commands
 
-    def ensure_service_ready(self, service_name: str, profile_id: str) -> None:
+    def ensure_service_ready(
+        self,
+        service_name: str,
+        profile_id: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
         prepared_key = f"{service_name}:{profile_id}"
         if prepared_key in self._prepared_profiles:
+            self._emit_progress(progress_callback, "Setup already verified")
             return
 
         commands = self._setup_commands_for(service_name, profile_id)
         for command in commands:
+            if command[:2] == ["./scripts/setup", "prerequisites"]:
+                self._emit_progress(progress_callback, "Ensuring prerequisites")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "llamacpp"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (llamacpp)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "sglang"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (sglang)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "vllm"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (vllm)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "stt"]:
+                self._emit_progress(progress_callback, "Ensuring STT runtime")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "tts"]:
+                self._emit_progress(progress_callback, "Ensuring TTS runtime")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "vocode"]:
+                self._emit_progress(progress_callback, "Ensuring vocode bridge runtime")
+
             self._run_command(command)
             if command[:2] == ["./scripts/setup", "prerequisites"]:
                 self._prerequisites_ready = True
 
         self._prepared_profiles.add(prepared_key)
+        self._emit_progress(progress_callback, "Setup ready")
 
-    def start_service(self, service_name: str, profile_id: str) -> str:
+    def start_service(
+        self,
+        service_name: str,
+        profile_id: str,
+        health_url: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
+        wait_for_health: bool = True,
+        ready_timeout_seconds: int = 120,
+    ) -> str:
         """Starts a service. Returns the log file path."""
-        self.ensure_service_ready(service_name, profile_id)
+        self.ensure_service_ready(service_name, profile_id, progress_callback=progress_callback)
         # Based on README: ./scripts/start <service> --profile <profile>
+        self._emit_progress(progress_callback, "Launching tmux session")
         cmd = ["./scripts/start", service_name, "--profile", profile_id]
         self._run_command(cmd)
+        if wait_for_health and health_url:
+            self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
         
         # We need to figure out where the log goes. 
         # From common.sh: LOG_FILE="$LOG_DIR/$SERVICE.log"
@@ -108,11 +171,23 @@ class Executor:
         cmd = ["./scripts/stop", service_name]
         self._run_command(cmd)
 
-    def restart_service(self, service_name: str, profile_id: str) -> str:
+    def restart_service(
+        self,
+        service_name: str,
+        profile_id: str,
+        health_url: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
+        wait_for_health: bool = True,
+        ready_timeout_seconds: int = 120,
+    ) -> str:
         """Restarts a service with a potentially new profile."""
-        self.ensure_service_ready(service_name, profile_id)
+        self.ensure_service_ready(service_name, profile_id, progress_callback=progress_callback)
+        self._emit_progress(progress_callback, "Stopping old session")
         cmd = ["./scripts/restart", service_name, "--profile", profile_id]
         self._run_command(cmd)
+        self._emit_progress(progress_callback, "Launching tmux session")
+        if wait_for_health and health_url:
+            self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
         return str(self.root_dir / "logs" / f"{service_name}.log")
 
     def download_model(self, service_name: str, profile_id: str) -> str:

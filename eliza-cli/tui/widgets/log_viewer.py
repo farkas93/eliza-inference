@@ -1,6 +1,7 @@
 import pathlib
 from textual.widgets import TextArea
 
+
 class LogViewer(TextArea):
     """A widget that displays streaming logs from a file."""
 
@@ -21,10 +22,12 @@ class LogViewer(TextArea):
         self._last_position = 0
         self.clear()
 
-    def update_logs(self) -> None:
-        """Reads new lines from the log file and appends them to the widget."""
+    def update_logs(self) -> list[str]:
+        """Reads new lines from the log file, appends them, and returns them."""
         if not self.log_file_path.exists():
-            return
+            return []
+
+        new_lines: list[str] = []
 
         try:
             scroll_y_before = self.scroll_y
@@ -46,3 +49,6 @@ class LogViewer(TextArea):
                     self.scroll_to(y=scroll_y_before, animate=False, immediate=True)
         except Exception as e:
             self.insert(f"Error reading logs: {e}\n", location=self.document.end)
+            return []
+
+        return new_lines
