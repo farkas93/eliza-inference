@@ -15,7 +15,7 @@ enabled = true
 
 [[services]]
 name = "eliza-small"
-profile = "small/gemma4-e2b-q4-llamacpp-8k"
+profile = "small/gemma4-e2b-q4-llamacpp-128k"
 health_url = "http://127.0.0.1:8002/v1/models"
 enabled = true
 
@@ -33,7 +33,7 @@ enabled = true
 
 [models.eliza-small]
 service = "eliza-small"
-profile = "small/gemma4-e2b-q4-llamacpp-8k"
+profile = "small/gemma4-e2b-q4-llamacpp-128k"
 public_name = "eliza-small"
 actual_model = "gemma-4-e2b-it-q4-k-m"
 base_url = "http://127.0.0.1:8002/v1"

@@ -163,7 +163,7 @@ parse_service_profile() {
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
       eliza-medium) PROFILE="medium/qwen3_6-35b-a3b-q4-llamacpp-256k" ;;
-      eliza-small) PROFILE="small/gemma4-e2b-q4-llamacpp-8k" ;;
+      eliza-small) PROFILE="small/gemma4-e2b-q4-llamacpp-128k" ;;
       stt) PROFILE="stt/faster-whisper-small-cpu" ;;
       tts) PROFILE="tts/piper-lessac" ;;
       voice-assistant) PROFILE="voice/assistant-local" ;;

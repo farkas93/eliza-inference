@@ -36,7 +36,7 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 ./scripts/setup stt --profile stt/faster-whisper-small-cpu
 ./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/setup vocode
-./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-128k
 ./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
 ./scripts/start-stack
 ./scripts/smoke-test-stack
@@ -85,7 +85,7 @@ Profiles live under `configs/profiles/` and are grouped by capability/runtime cl
 - `configs/profiles/vocode/`
 - `configs/profiles/voice/`
 
-Use path-style profile IDs in commands, for example `small/gemma4-e2b-q4-llamacpp-8k` or `medium/openpangu-2_0-flash-q4-llamacpp-256k`.
+Use path-style profile IDs in commands, for example `small/gemma4-e2b-q4-llamacpp-128k` or `medium/openpangu-2_0-flash-q4-llamacpp-256k`.
 
 Voice profiles include llama.cpp and vLLM variants so Gemma backends can be compared without changing client code.
 
@@ -93,7 +93,7 @@ Voice profiles include llama.cpp and vLLM variants so Gemma backends can be comp
 
 ```bash
 ./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
-./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-128k
 ./scripts/status eliza-medium
 ./scripts/logs eliza-small
 ./scripts/stop eliza-small
