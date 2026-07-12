@@ -9,6 +9,7 @@ load_env
 DS4_DIR="${DS4_DIR:-$HOME/src/ds4}"
 DS4_REPO="${DS4_REPO:-https://github.com/antirez/ds4}"
 DS4_BIN="${DS4_BIN:-$HOME/.local/bin/ds4}"
+DS4_BUILD_TARGET="${DS4_BUILD_TARGET:-}"
 INSTALL_DS4="true"
 UPDATE_SOURCE="true"
 
@@ -30,6 +31,10 @@ while [[ $# -gt 0 ]]; do
       DS4_BIN="${2:-}"
       shift 2
       ;;
+    --build-target)
+      DS4_BUILD_TARGET="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       cat <<USAGE
 Usage: ./scripts/setup ds4 [options]
@@ -41,6 +46,9 @@ Options:
   --no-update   Do not git pull an existing clean checkout.
   --dir PATH    Source checkout path. Default: ~/src/ds4
   --bin PATH    Install symlink path. Default: ~/.local/bin/ds4
+  --build-target TARGET
+                 make target (for example: cpu, cuda-spark, cuda-generic).
+                 Default: auto-detected per platform.
 USAGE
       exit 0
       ;;
@@ -115,8 +123,21 @@ ensure_source_checkout() {
 }
 
 build_ds4() {
-  echo "Building ds4"
-  make -C "$DS4_DIR"
+  local target="$DS4_BUILD_TARGET"
+
+  if [[ -z "$target" ]]; then
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      target="all"
+    elif command -v nvcc >/dev/null 2>&1; then
+      target="cuda-spark"
+    else
+      target="cpu"
+    fi
+  fi
+
+  echo "Building ds4 (target: $target)"
+  make -C "$DS4_DIR" "$target"
+
   if [[ ! -x "$DS4_DIR/ds4" ]]; then
     echo "Expected ds4 binary missing after build: $DS4_DIR/ds4" >&2
     exit 1
