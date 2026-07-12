@@ -11,6 +11,9 @@ case "${BACKEND:-llamacpp}" in
   sglang)
     exec "$(dirname "$0")/start-sglang.sh"
     ;;
+  ds4)
+    exec "$(dirname "$0")/start-ds4.sh"
+    ;;
   *)
     echo "Unsupported eliza-medium backend: ${BACKEND:-}" >&2
     exit 2

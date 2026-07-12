@@ -1129,6 +1129,10 @@ class ElizaTUI(App):
             return
 
         self.notify(f"Downloading artifacts for {selected_profile.name}...")
+        state = self.profile_states.get(selected_profile.name)
+        if state is None:
+            self.notify(f"Profile state missing for {selected_profile.name}", severity="error")
+            return
         before_size = self._paths_size(state.expected_paths)
         try:
             self.executor.download_model(service_name, selected_profile.name)

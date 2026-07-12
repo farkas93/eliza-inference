@@ -307,7 +307,7 @@ class Executor:
 
         if service_name in {"eliza-small", "eliza-medium"}:
             backend = self._profile_backend(profile_id)
-            if backend in {"llamacpp", "vllm", "sglang"}:
+            if backend in {"llamacpp", "vllm", "sglang", "ds4"}:
                 commands.append(["./scripts/setup", backend])
         elif service_name == "stt":
             commands.append(["./scripts/setup", "stt", "--profile", profile_id])
@@ -341,6 +341,8 @@ class Executor:
                 self._emit_progress(progress_callback, "Ensuring runtime (sglang)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "vllm"]:
                 self._emit_progress(progress_callback, "Ensuring runtime (vllm)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "ds4"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (ds4)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "stt"]:
                 self._emit_progress(progress_callback, "Ensuring STT runtime")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "tts"]:

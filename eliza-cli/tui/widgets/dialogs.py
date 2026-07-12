@@ -16,6 +16,7 @@ class ProfileSelectDialog(ModalScreen):
         self.profiles = profiles
         self.on_select = on_select
         self._profile_by_item_id: dict[str, Profile] = {}
+        self._closed = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog-container"):
@@ -28,10 +29,15 @@ class ProfileSelectDialog(ModalScreen):
             yield Button("Cancel", variant="error", id="cancel_btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if self._closed:
+            return
         if event.button.id == "cancel_btn":
+            self._closed = True
             self.dismiss()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if self._closed:
+            return
         if event.item is None or event.item.id is None:
             return
 
@@ -39,6 +45,7 @@ class ProfileSelectDialog(ModalScreen):
         if selected_profile is None:
             return
 
+        self._closed = True
         self.on_select(selected_profile)
         self.dismiss()
 
@@ -50,6 +57,7 @@ class ConfirmDialog(ModalScreen[bool]):
         super().__init__()
         self.title = title
         self.message = message
+        self._closed = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-dialog"):
@@ -59,7 +67,11 @@ class ConfirmDialog(ModalScreen[bool]):
             yield Button("Cancel", variant="error", id="cancel_btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if self._closed:
+            return
         if event.button.id == "confirm_btn":
+            self._closed = True
             self.dismiss(True)
         elif event.button.id == "cancel_btn":
+            self._closed = True
             self.dismiss(False)

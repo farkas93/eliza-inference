@@ -45,6 +45,20 @@ case "$SERVICE" in
       hf_download "$MODEL_REPO" \
         --include "$MODEL_FILE" \
         --local-dir "$MODEL_DIR"
+    elif [[ "${BACKEND:-vllm}" == "ds4" ]]; then
+      mkdir -p "$MODEL_DIR"
+      if [[ -n "${MODEL_REPO:-}" && -n "${MODEL_FILE:-}" ]]; then
+        echo "Downloading ds4 GGUF model from $MODEL_REPO into $MODEL_DIR"
+        hf_download "$MODEL_REPO" \
+          --include "$MODEL_FILE" \
+          --local-dir "$MODEL_DIR"
+      elif [[ -x "${DS4_DIR:-$HOME/src/ds4}/download_model.sh" ]]; then
+        echo "Using ds4 model helper script"
+        "${DS4_DIR:-$HOME/src/ds4}/download_model.sh" "${DS4_MODEL_PRESET:-q2-imatrix}"
+      else
+        echo "No ds4 model source configured. Set MODEL_REPO/MODEL_FILE or install ds4 with download_model.sh" >&2
+        exit 1
+      fi
     else
       echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
       hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
