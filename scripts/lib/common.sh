@@ -117,8 +117,10 @@ resolve_profile_path() {
     medium/qwen36-35b-a3b-llamacpp-256k|medium/eliza-medium-qwen36-35b-a3b-llamacpp-256k|medium/qwen36-35b-a3b-llamacpp-200k-experimental|medium/eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental) profile="medium/qwen3_6-35b-a3b-q4-llamacpp-256k" ;;
     medium/gemma4-26b-a4b-llamacpp-256k-experimental|medium/eliza-medium-gemma4-26b-a4b-llamacpp-256k-experimental) profile="medium/gemma4-26b-a4b-q4-llamacpp-256k" ;;
     medium/vllm-smoke-tinyllama|medium/eliza-medium-vllm-smoke-tinyllama) profile="medium/tinyllama-1_1b-vllm-2k" ;;
+    medium/deepseek-v4-flash-ds4-256k|medium/eliza-medium-deepseek-v4-flash-ds4-256k) profile="medium/deepseek-v4-flash-ds4-256k" ;;
     small/gemma4-e2b-fast|small/eliza-small-gemma4-e2b-fast) profile="small/gemma4-e2b-q4-llamacpp-8k" ;;
     small/gemma4-e4b-quality|small/eliza-small-gemma4-e4b-quality) profile="small/gemma4-e4b-q4-llamacpp-8k" ;;
+    small/gemma4-e4b-long|small/eliza-small-gemma4-e4b-long) profile="small/gemma4-e4b-q4-llamacpp-128k" ;;
     small/gemma4-12b-quality|small/eliza-small-gemma4-12b-quality) profile="small/gemma4-12b-q4-llamacpp-8k" ;;
     small/gemma4-e4b-vllm-experimental|small/eliza-small-gemma4-e4b-vllm-experimental) profile="small/gemma4-e4b-vllm-8k" ;;
     small/gemma3-4b-stable|small/eliza-small-gemma3-4b-stable) profile="small/gemma3-4b-q4-llamacpp-8k" ;;

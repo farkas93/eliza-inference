@@ -23,6 +23,7 @@ Port: 8002
 | --- | --- | --- | --- |
 | `small/gemma4-e2b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E2B | Default low-latency voice model |
 | `small/gemma4-e4b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E4B | Alternative 8K llama.cpp profile |
+| `small/gemma4-e4b-q4-llamacpp-128k` | llama.cpp | Gemma 4 E4B | Long-context 128K llama.cpp profile |
 | `small/gemma4-12b-q4-llamacpp-8k` | llama.cpp | Gemma 4 12B | Larger Gemma profile on small tier |
 | `small/gemma4-e4b-vllm-8k` | vLLM | Gemma 4 E4B HF | vLLM profile for runtime comparison |
 | `small/gemma3-4b-q4-llamacpp-8k` | llama.cpp | Gemma 3 4B QAT | Smaller fallback profile |

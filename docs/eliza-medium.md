@@ -24,6 +24,7 @@ The default llama.cpp profile uses `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf`.
 | `medium/qwen3_6-27b-fp8-vllm-256k-kvfp8` | vLLM | `262144` | vLLM KV fp8 comparison |
 | `medium/qwen3_6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
 | `medium/qwen3_6-27b-fp8-vllm-256k-native` | vLLM | `262144` | vLLM native max-context profile |
+| `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | DS4 256K long-context profile |
 
 ## Start
 
