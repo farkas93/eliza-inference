@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
+BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir)
+      LLAMA_CPP_DIR="${2:-}"
+      BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: scripts/installation-suite/uninstall-llamacpp [--dir PATH]
+
+Resets llama.cpp for reinstall by removing build artifacts.
+Source checkout is preserved by default.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -d "$BUILD_DIR" ]]; then
+  echo "Removing llama.cpp build dir: $BUILD_DIR"
+  rm -rf "$BUILD_DIR"
+else
+  echo "[skip] build dir not found: $BUILD_DIR"
+fi
+
+cat <<EOF
+
+llama.cpp reset complete.
+
+Preserved source checkout:
+$LLAMA_CPP_DIR
+
+Reinstall with:
+  ./scripts/setup llamacpp
+EOF

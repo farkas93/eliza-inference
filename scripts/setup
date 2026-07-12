@@ -12,6 +12,7 @@ Commands:
   prerequisites           Install base prerequisites and .venvs/base
   llamacpp [options]      Build/install llama.cpp CUDA binaries
   sglang [options]        Install SGLang runtime and verify GPU stack
+  ds4 [options]           Build/install ds4 from source
   stt [options]           Install STT runtime and verify profile
   tts [options]           Install TTS runtime and verify profile
   vllm [options]          Install vLLM runtime and verify GPU stack
@@ -22,6 +23,7 @@ Examples:
   ./scripts/setup prerequisites
   ./scripts/setup llamacpp --clean
   ./scripts/setup sglang
+  ./scripts/setup ds4
   ./scripts/setup stt --profile stt/faster-whisper-small-cpu
   ./scripts/setup tts --profile tts/piper-lessac
   ./scripts/setup clean-system
@@ -52,6 +54,10 @@ case "$1" in
   sglang)
     shift
     exec "$SUITE_DIR/install-sglang" "$@"
+    ;;
+  ds4)
+    shift
+    exec "$SUITE_DIR/install-ds4" "$@"
     ;;
   stt)
     shift

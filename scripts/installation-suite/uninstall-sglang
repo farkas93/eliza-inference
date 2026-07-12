@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+SGLANG_VENV="${SGLANG_VENV:-$ROOT_DIR/.venvs/sglang}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --venv)
+      SGLANG_VENV="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: scripts/installation-suite/uninstall-sglang [--venv PATH]
+
+Resets SGLang for reinstall by removing its virtual environment.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -d "$SGLANG_VENV" ]]; then
+  echo "Removing SGLang venv: $SGLANG_VENV"
+  rm -rf "$SGLANG_VENV"
+else
+  echo "[skip] SGLang venv not found: $SGLANG_VENV"
+fi
+
+cat <<EOF
+
+SGLang reset complete.
+
+Reinstall with:
+  ./scripts/setup sglang
+EOF

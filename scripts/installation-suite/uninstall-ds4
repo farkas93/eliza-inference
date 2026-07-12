@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+DS4_DIR="${DS4_DIR:-$HOME/src/ds4}"
+DS4_BIN="${DS4_BIN:-$HOME/.local/bin/ds4}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir)
+      DS4_DIR="${2:-}"
+      shift 2
+      ;;
+    --bin)
+      DS4_BIN="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: scripts/installation-suite/uninstall-ds4 [--dir PATH] [--bin PATH]
+
+Resets ds4 for reinstall by removing built/runtime binary artifacts.
+Source checkout is preserved by default.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -L "$DS4_BIN" ]]; then
+  target="$(readlink -f "$DS4_BIN")"
+  if [[ "$target" == "$DS4_DIR"/* ]]; then
+    echo "Removing ds4 launcher symlink: $DS4_BIN"
+    rm -f "$DS4_BIN"
+  else
+    echo "[skip] symlink target is outside DS4_DIR: $DS4_BIN -> $target"
+  fi
+elif [[ -e "$DS4_BIN" ]]; then
+  echo "[skip] DS4_BIN exists but is not managed symlink: $DS4_BIN"
+else
+  echo "[skip] DS4_BIN not found: $DS4_BIN"
+fi
+
+if [[ -x "$DS4_DIR/ds4" ]]; then
+  echo "Removing built ds4 binary: $DS4_DIR/ds4"
+  rm -f "$DS4_DIR/ds4"
+else
+  echo "[skip] built ds4 binary not found: $DS4_DIR/ds4"
+fi
+
+cat <<EOF
+
+ds4 reset complete.
+
+Preserved source checkout:
+$DS4_DIR
+
+Reinstall with:
+  ./scripts/setup ds4
+EOF

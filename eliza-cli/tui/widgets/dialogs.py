@@ -3,7 +3,7 @@ from typing import Callable, List
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, ListItem, ListView
+from textual.widgets import Button, Label, ListItem, ListView
 
 from core.models import Profile
 
@@ -18,7 +18,6 @@ class ProfileSelectDialog(ModalScreen):
         self._profile_by_item_id: dict[str, Profile] = {}
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with Vertical(id="dialog-container"):
             yield Label(f"Select profile for {self.service_name}:")
             with ListView(id="profile-list"):
@@ -27,7 +26,6 @@ class ProfileSelectDialog(ModalScreen):
                     self._profile_by_item_id[item_id] = profile
                     yield ListItem(Label(profile.name), id=item_id)
             yield Button("Cancel", variant="error", id="cancel_btn")
-        yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel_btn":
@@ -54,13 +52,11 @@ class ConfirmDialog(ModalScreen[bool]):
         self.message = message
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         with Vertical(id="confirm-dialog"):
             yield Label(f"[bold]{self.title}[/bold]")
             yield Label(self.message)
             yield Button("Confirm", variant="success", id="confirm_btn")
             yield Button("Cancel", variant="error", id="cancel_btn")
-        yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm_btn":

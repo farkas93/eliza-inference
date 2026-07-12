@@ -1,7 +1,7 @@
 from textual.widgets import DataTable, ListItem, Label, Static
 from textual.containers import Container
 from textual.widgets import ListView
-from core.models import Profile, Service
+from core.models import BackendRuntime, Profile, Service
 from typing import Dict, List
 
 class ServiceTable(DataTable):
@@ -191,6 +191,63 @@ class ModelTable(DataTable):
             if row_index is not None and row_index >= 0:
                 row_data = self.get_row_at(row_index)
                 return str(row_data[3])
+        except Exception:
+            pass
+        return ""
+
+
+class BackendTable(DataTable):
+    """A table showing install status for supported backends."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_initialized = False
+
+    def _ensure_columns(self) -> None:
+        if self._columns_initialized:
+            return
+        self.add_columns("Backend", "Installed", "Version", "Status", "Location", "Update")
+        self._columns_initialized = True
+
+    def update_data(
+        self,
+        backends: List[BackendRuntime],
+        selected_backend_name: str = "",
+        selected_row_index: int | None = None,
+        selected_column: int = 0,
+    ) -> None:
+        self._ensure_columns()
+        self.clear(columns=False)
+
+        target_row = None
+        for row_index, backend in enumerate(backends):
+            self.add_row(
+                backend.name,
+                "YES" if backend.installed else "NO",
+                backend.version,
+                backend.status,
+                backend.location,
+                backend.update_hint,
+            )
+            if selected_backend_name and backend.name == selected_backend_name:
+                target_row = row_index
+
+        if target_row is None and selected_row_index is not None and backends:
+            target_row = min(max(selected_row_index, 0), len(backends) - 1)
+
+        if target_row is None and backends and self.cursor_row is None:
+            target_row = 0
+
+        if target_row is not None:
+            bounded_column = min(max(selected_column, 0), 5)
+            self.move_cursor(row=target_row, column=bounded_column, animate=False, scroll=False)
+
+    def get_selected_backend_name(self) -> str:
+        try:
+            row_index = self.cursor_row
+            if row_index is not None and row_index >= 0:
+                row_data = self.get_row_at(row_index)
+                return str(row_data[0])
         except Exception:
             pass
         return ""

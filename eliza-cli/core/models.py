@@ -48,3 +48,16 @@ class Stack:
     name: str
     services: Dict[str, Service] = field(default_factory=dict)
     profiles: Dict[str, Profile] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BackendRuntime:
+    """Represents install/runtime status for an inference backend."""
+
+    name: str
+    installed: bool
+    version: str
+    status: str
+    location: str
+    update_hint: str = ""
+    notes: str = ""

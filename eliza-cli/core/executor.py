@@ -1,10 +1,14 @@
 import subprocess
 import pathlib
 import logging
+import os
+import shutil
 import time
 from typing import Callable, List
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+from .models import BackendRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +87,217 @@ class Executor:
                 backend = value.strip().strip('"').strip("'")
                 break
         return backend
+
+    def _load_env_values(self) -> dict[str, str]:
+        env_values: dict[str, str] = {}
+        env_path = self.root_dir / ".env"
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                raw = line.strip()
+                if not raw or raw.startswith("#") or "=" not in raw:
+                    continue
+                key, value = raw.split("=", 1)
+                env_values[key.strip()] = value.strip().strip('"').strip("'")
+        return env_values
+
+    def _first_line_from_command(self, command_args: list[str], timeout_seconds: float = 4.0) -> str:
+        try:
+            result = subprocess.run(
+                command_args,
+                cwd=self.root_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+            )
+        except Exception:
+            return ""
+
+        output = (result.stdout or "").strip() or (result.stderr or "").strip()
+        if not output:
+            return ""
+        return output.splitlines()[0].strip()
+
+    def _detect_llama_server_binary(self, env_values: dict[str, str]) -> pathlib.Path | None:
+        llama_server_bin = env_values.get("LLAMA_SERVER_BIN", "llama-server")
+        candidate = pathlib.Path(llama_server_bin).expanduser()
+        if ("/" in llama_server_bin or llama_server_bin.startswith(".")) and candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate.resolve()
+
+        resolved = shutil.which(llama_server_bin)
+        if resolved:
+            return pathlib.Path(resolved).resolve()
+
+        fallback = shutil.which("llama-server")
+        if fallback:
+            return pathlib.Path(fallback).resolve()
+
+        llama_cpp_dir = pathlib.Path(env_values.get("LLAMA_CPP_DIR", str(pathlib.Path.home() / "src" / "llama.cpp"))).expanduser()
+        build_dir = pathlib.Path(env_values.get("LLAMA_CPP_BUILD_DIR", str(llama_cpp_dir / "build"))).expanduser()
+        build_bin = (build_dir / "bin" / "llama-server").resolve()
+        if build_bin.exists() and os.access(build_bin, os.X_OK):
+            return build_bin
+
+        return None
+
+    def _probe_llamacpp(self, env_values: dict[str, str]) -> BackendRuntime:
+        binary = self._detect_llama_server_binary(env_values)
+        if binary is None:
+            return BackendRuntime(
+                name="llamacpp",
+                installed=False,
+                version="-",
+                status="missing",
+                location="llama-server not found",
+                update_hint="Install to build CUDA binaries",
+            )
+
+        version = self._first_line_from_command([str(binary), "--version"]) or self._first_line_from_command([str(binary), "--help"])
+        return BackendRuntime(
+            name="llamacpp",
+            installed=True,
+            version=version or "detected",
+            status="installed",
+            location=str(binary),
+            update_hint="Rebuild from latest source",
+        )
+
+    def _probe_sglang(self, env_values: dict[str, str]) -> BackendRuntime:
+        eliza_venv_dir = pathlib.Path(env_values.get("ELIZA_VENV_DIR", str(self.root_dir / ".venvs"))).expanduser()
+        sglang_venv = pathlib.Path(env_values.get("SGLANG_VENV", str(eliza_venv_dir / "sglang"))).expanduser()
+        sglang_python = sglang_venv / "bin" / "python"
+        sglang_cli = sglang_venv / "bin" / "sglang"
+
+        cli_location = sglang_cli if sglang_cli.exists() else None
+        if cli_location is None:
+            resolved = shutil.which("sglang")
+            if resolved:
+                cli_location = pathlib.Path(resolved).resolve()
+
+        if not sglang_python.exists() and cli_location is None:
+            return BackendRuntime(
+                name="sglang",
+                installed=False,
+                version="-",
+                status="missing",
+                location=str(sglang_venv),
+                update_hint="Install SGLang runtime",
+            )
+
+        version = ""
+        if sglang_python.exists():
+            version = self._first_line_from_command(
+                [
+                    str(sglang_python),
+                    "-c",
+                    "import importlib.metadata as m; print(m.version('sglang'))",
+                ]
+            )
+        if not version and cli_location is not None:
+            version = self._first_line_from_command([str(cli_location), "--version"])
+
+        status = "installed"
+        notes = ""
+        if not sglang_python.exists():
+            status = "broken"
+            notes = "SGLang venv missing python"
+
+        return BackendRuntime(
+            name="sglang",
+            installed=True,
+            version=version or "detected",
+            status=status,
+            location=str(cli_location or sglang_venv),
+            update_hint="Upgrade package and dependencies",
+            notes=notes,
+        )
+
+    def _probe_ds4(self, env_values: dict[str, str]) -> BackendRuntime:
+        ds4_dir = pathlib.Path(env_values.get("DS4_DIR", str(pathlib.Path.home() / "src" / "ds4"))).expanduser()
+        ds4_bin_setting = env_values.get("DS4_BIN", str(pathlib.Path.home() / ".local" / "bin" / "ds4"))
+        ds4_bin = pathlib.Path(ds4_bin_setting).expanduser()
+
+        binary = None
+        if ds4_bin.exists() and os.access(ds4_bin, os.X_OK):
+            binary = ds4_bin.resolve()
+        else:
+            resolved = shutil.which("ds4")
+            if resolved:
+                binary = pathlib.Path(resolved).resolve()
+            elif (ds4_dir / "ds4").exists() and os.access(ds4_dir / "ds4", os.X_OK):
+                binary = (ds4_dir / "ds4").resolve()
+
+        if binary is None:
+            return BackendRuntime(
+                name="ds4",
+                installed=False,
+                version="-",
+                status="missing",
+                location=str(ds4_dir),
+                update_hint="Install ds4 from source",
+            )
+
+        version = self._first_line_from_command([str(binary), "--version"]) or self._first_line_from_command([str(binary), "--help"])
+        return BackendRuntime(
+            name="ds4",
+            installed=True,
+            version=version or "detected",
+            status="installed",
+            location=str(binary),
+            update_hint="Pull latest source and rebuild",
+        )
+
+    def probe_backends(self) -> List[BackendRuntime]:
+        env_values = self._load_env_values()
+        return [
+            self._probe_llamacpp(env_values),
+            self._probe_sglang(env_values),
+            self._probe_ds4(env_values),
+        ]
+
+    def install_backend(
+        self,
+        backend_name: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        command_map = {
+            "llamacpp": ["./scripts/setup", "llamacpp"],
+            "sglang": ["./scripts/setup", "sglang"],
+            "ds4": ["./scripts/setup", "ds4"],
+        }
+        command = command_map.get(backend_name)
+        if command is None:
+            raise ExecutionError(f"Unsupported backend: {backend_name}")
+
+        self._emit_progress(progress_callback, "Running setup")
+        self._run_command(command)
+        self._emit_progress(progress_callback, "Ready")
+
+    def update_backend(
+        self,
+        backend_name: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        self._emit_progress(progress_callback, "Applying latest update")
+        self.install_backend(backend_name, progress_callback=progress_callback)
+
+    def uninstall_backend(
+        self,
+        backend_name: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        command_map = {
+            "llamacpp": ["./scripts/installation-suite/uninstall-llamacpp"],
+            "sglang": ["./scripts/installation-suite/uninstall-sglang"],
+            "ds4": ["./scripts/installation-suite/uninstall-ds4"],
+        }
+        command = command_map.get(backend_name)
+        if command is None:
+            raise ExecutionError(f"Unsupported backend: {backend_name}")
+
+        self._emit_progress(progress_callback, "Removing installed runtime")
+        self._run_command(command)
+        self._emit_progress(progress_callback, "Removed")
 
     def _setup_commands_for(self, service_name: str, profile_id: str) -> List[list[str]]:
         commands: list[list[str]] = []

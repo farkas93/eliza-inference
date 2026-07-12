@@ -19,9 +19,10 @@ from core.discovery import DiscoveryEngine
 from core.executor import Executor
 from core.model_manager import ModelEntry, ModelManager, ProfileState
 from core.monitor import MonitorEngine
-from core.models import Profile
+from core.models import BackendRuntime, Profile
 
 from .widgets import (
+    BackendTable,
     ConfirmDialog,
     ModelTable,
     ProfileInspector,
@@ -129,11 +130,15 @@ class ElizaTUI(App):
         Binding("f1", "switch_services", "Services"),
         Binding("f2", "switch_profiles", "Profiles"),
         Binding("f3", "switch_models", "Models"),
+        Binding("f4", "switch_backends", "Backends"),
         Binding("s", "start_service", "Start"),
-        Binding("i", "setup_service", "Setup"),
+        Binding("i", "setup_service", "Setup/Install"),
         Binding("k", "stop_service", "Stop"),
         Binding("r", "restart_service", "Restart"),
         Binding("p", "change_profile", "Swap Profile"),
+        Binding("u", "update_backend", "Update Backend"),
+        Binding("x", "uninstall_backend", "Uninstall Backend"),
+        Binding("v", "verify_backends", "Verify Backends"),
         Binding("l", "toggle_logs", "Toggle Logs"),
         Binding("ctrl+up", "increase_log_height", "Logs Taller"),
         Binding("ctrl+down", "decrease_log_height", "Logs Shorter"),
@@ -155,6 +160,8 @@ class ElizaTUI(App):
         self.profile_states: dict[str, ProfileState] = {}
         self.model_entries: list[ModelEntry] = []
         self.model_entries_by_path: dict[str, ModelEntry] = {}
+        self.backends: list[BackendRuntime] = []
+        self.backends_by_name: dict[str, BackendRuntime] = {}
         self.model_filter_text = ""
         self.model_sort_mode = "size_desc"
 
@@ -164,6 +171,7 @@ class ElizaTUI(App):
         self._service_snapshot: tuple[tuple[str, str, str, str, str, str, bool], ...] = ()
         self._profile_snapshot: tuple[tuple[str, bool, bool], ...] = ()
         self._model_inventory_snapshot: tuple[tuple[str, str, int, tuple[str, ...]], ...] = ()
+        self._backend_snapshot: tuple[tuple[str, bool, str, str, str], ...] = ()
         self._refreshing_model_inventory = False
         self._events: queue.Queue[tuple[str, dict[str, str]]] = queue.Queue()
         self._operation_thread: threading.Thread | None = None
@@ -196,6 +204,8 @@ class ElizaTUI(App):
                         with Vertical(id="models-pane"):
                             yield Input(placeholder="Filter models by name/path/profile...", id="model_filter")
                             yield ModelTable(id="model_table")
+                    with TabPane("F4 Backends", id="backends_tab"):
+                        yield BackendTable(id="backend_table")
 
                 with ProfileInspector(id="profile_inspector"):
                     pass
@@ -205,6 +215,7 @@ class ElizaTUI(App):
 
     def on_mount(self) -> None:
         self.refresh_stack_state(force=True)
+        self.refresh_backends(force=True)
 
         self.query_one("#service_table").focus()
         self._set_profile_inspector_visible(False)
@@ -221,6 +232,10 @@ class ElizaTUI(App):
 
     def _active_tab(self) -> str:
         return self.query_one("#main-tabs", TabbedContent).active or "services_tab"
+
+    def _selected_backend_name(self) -> str | None:
+        backend_name = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+        return backend_name or None
 
     def _set_logs_visible(self, visible: bool) -> None:
         self.logs_visible = visible
@@ -397,6 +412,55 @@ class ElizaTUI(App):
         self._operation_thread = threading.Thread(target=worker, daemon=True)
         self._operation_thread.start()
 
+    def _launch_backend_operation(self, action: str, backend_name: str) -> None:
+        if self._service_operation_active():
+            self.notify("Another operation is still running", severity="warning")
+            return
+
+        self._operation_service_name = backend_name
+        self._operation_action = action
+        self._last_warning = ""
+        self._set_activity(f"{backend_name} {action}: queued", busy=True)
+
+        def worker() -> None:
+            try:
+                progress_callback = lambda message: self._enqueue_progress(action, backend_name, message)
+                if action == "install":
+                    self.executor.install_backend(backend_name, progress_callback=progress_callback)
+                elif action == "update":
+                    self.executor.update_backend(backend_name, progress_callback=progress_callback)
+                elif action == "uninstall":
+                    self.executor.uninstall_backend(backend_name, progress_callback=progress_callback)
+                else:
+                    raise RuntimeError(f"Unknown backend action: {action}")
+
+                self._events.put(
+                    (
+                        "success",
+                        {
+                            "kind": "backend",
+                            "action": action,
+                            "service_name": backend_name,
+                            "log_path": "",
+                        },
+                    )
+                )
+            except Exception as exc:
+                self._events.put(
+                    (
+                        "error",
+                        {
+                            "kind": "backend",
+                            "action": action,
+                            "service_name": backend_name,
+                            "message": str(exc),
+                        },
+                    )
+                )
+
+        self._operation_thread = threading.Thread(target=worker, daemon=True)
+        self._operation_thread.start()
+
     def _process_events(self) -> None:
         handled = False
         while True:
@@ -406,6 +470,7 @@ class ElizaTUI(App):
                 break
 
             handled = True
+            kind = payload.get("kind", "service")
             action = payload.get("action", "")
             service_name = payload.get("service_name", "")
             if event_type == "progress":
@@ -413,16 +478,26 @@ class ElizaTUI(App):
                 self._set_activity(f"{service_name} {action}: {message}", busy=True)
             elif event_type == "success":
                 log_path = payload.get("log_path", "")
-                self.refresh_stack_state(force=True)
-                if log_path:
-                    self.attach_logs(log_path)
-                if action == "setup":
-                    self.refresh_model_inventory()
-                    self.notify(f"Setup complete for {service_name}", severity="information")
-                elif action == "start":
-                    self.notify(f"Started {service_name}", severity="information")
-                elif action == "restart":
-                    self.notify(f"Restarted {service_name}", severity="information")
+                if kind == "backend":
+                    self.refresh_backends(force=True)
+                    if action == "install":
+                        self.notify(f"Installed backend {service_name}", severity="information")
+                    elif action == "update":
+                        self.notify(f"Updated backend {service_name}", severity="information")
+                    elif action == "uninstall":
+                        self.notify(f"Uninstalled backend {service_name}", severity="information")
+                    self._update_backend_summary(service_name)
+                else:
+                    self.refresh_stack_state(force=True)
+                    if log_path:
+                        self.attach_logs(log_path)
+                    if action == "setup":
+                        self.refresh_model_inventory()
+                        self.notify(f"Setup complete for {service_name}", severity="information")
+                    elif action == "start":
+                        self.notify(f"Started {service_name}", severity="information")
+                    elif action == "restart":
+                        self.notify(f"Restarted {service_name}", severity="information")
                 self._set_activity(f"{service_name} {action}: ready", busy=False, severity="information")
                 self._operation_service_name = None
                 self._operation_action = None
@@ -520,6 +595,37 @@ class ElizaTUI(App):
         return tuple(
             sorted((entry.path, entry.status, entry.size_bytes, entry.linked_profiles) for entry in entries)
         )
+
+    @staticmethod
+    def _backend_snapshot_from_entries(
+        backends: list[BackendRuntime],
+    ) -> tuple[tuple[str, bool, str, str, str], ...]:
+        return tuple(sorted((backend.name, backend.installed, backend.version, backend.status, backend.location) for backend in backends))
+
+    def _refresh_backend_table(self) -> None:
+        backend_table = self.query_one("#backend_table", BackendTable)
+        selected_backend_name = backend_table.get_selected_backend_name()
+        selected_row_index = backend_table.cursor_row
+        selected_column = backend_table.cursor_column if backend_table.cursor_column is not None else 0
+        scroll_y = backend_table.scroll_y
+        backend_table.update_data(
+            self.backends,
+            selected_backend_name=selected_backend_name,
+            selected_row_index=selected_row_index,
+            selected_column=selected_column,
+        )
+        backend_table.scroll_to(y=scroll_y, animate=False, immediate=True)
+        self._backend_snapshot = self._backend_snapshot_from_entries(self.backends)
+
+    def refresh_backends(self, force: bool = False) -> None:
+        backends = self.executor.probe_backends()
+        snapshot = self._backend_snapshot_from_entries(backends)
+        if force or snapshot != self._backend_snapshot:
+            self.backends = backends
+            self.backends_by_name = {backend.name: backend for backend in backends}
+            self._refresh_backend_table()
+            if self._active_tab() == "backends_tab":
+                self._update_backend_summary(self._selected_backend_name())
 
     def _refresh_profile_list(self) -> None:
         profiles = sorted(self.stack.profiles.values(), key=lambda profile: profile.name)
@@ -660,6 +766,11 @@ class ElizaTUI(App):
                 "Profiles: [LIVE]/[RDY]/[MISS] | arrows browse "
                 "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
             ).format(logs_status, logs_size)
+        elif tab == "backends_tab":
+            legend = (
+                "Backends: i install | u update | x uninstall | v verify "
+                "| l logs ({}) | ctrl+up/down logs height ({}) | ctrl+c copy logs"
+            ).format(logs_status, logs_size)
         else:
             legend = (
                 "Models: / filter | o sort({}) | d delete | c cleanup orphans "
@@ -707,6 +818,35 @@ class ElizaTUI(App):
             ("Linked Profiles", profiles),
         ]
         self._update_side_summary("Model Summary", details)
+
+    def _update_backend_summary(self, backend_name: str | None) -> None:
+        if not backend_name:
+            self._update_side_summary(
+                "Backend Summary",
+                [
+                    ("Backend", "-"),
+                    ("Installed", "-"),
+                    ("Version", "-"),
+                    ("Status", "-"),
+                    ("Location", "-"),
+                ],
+            )
+            return
+
+        backend = self.backends_by_name.get(backend_name)
+        if backend is None:
+            return
+
+        details = [
+            ("Backend", backend.name),
+            ("Installed", "YES" if backend.installed else "NO"),
+            ("Version", backend.version),
+            ("Status", backend.status),
+            ("Location", backend.location),
+        ]
+        if backend.notes:
+            details.append(("Notes", backend.notes))
+        self._update_side_summary("Backend Summary", details)
 
     def update_monitor(self) -> None:
         stats = self.monitor.get_stats()
@@ -782,11 +922,13 @@ class ElizaTUI(App):
         if event.control.id == "profile_list" and event.item is not None:
             self._update_profile_inspector_by_item_id(event.item.id)
 
-    def on_data_table_row_highlighted(self, event: ModelTable.RowHighlighted) -> None:
-        if event.control.id != "model_table":
-            return
-        model_path = self.query_one("#model_table", ModelTable).get_selected_model_path()
-        self._update_model_summary(model_path)
+    def on_data_table_row_highlighted(self, event) -> None:
+        if event.control.id == "model_table":
+            model_path = self.query_one("#model_table", ModelTable).get_selected_model_path()
+            self._update_model_summary(model_path)
+        elif event.control.id == "backend_table":
+            backend_name = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+            self._update_backend_summary(backend_name)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "model_filter":
@@ -815,6 +957,15 @@ class ElizaTUI(App):
         self._update_model_summary(selected_path)
         self._update_context_legend()
 
+    def action_switch_backends(self) -> None:
+        self.query_one("#main-tabs", TabbedContent).active = "backends_tab"
+        self.query_one("#backend_table").focus()
+        self._set_profile_inspector_visible(True)
+        self.refresh_backends(force=True)
+        selected_backend = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+        self._update_backend_summary(selected_backend)
+        self._update_context_legend()
+
     def action_focus_model_filter(self) -> None:
         if self._active_tab() != "models_tab":
             return
@@ -841,6 +992,12 @@ class ElizaTUI(App):
             self._set_profile_inspector_visible(True)
             selected_path = self.query_one("#model_table", ModelTable).get_selected_model_path()
             self._update_model_summary(selected_path)
+        elif event.tab.id == "backends_tab":
+            self.query_one("#backend_table").focus()
+            self._set_profile_inspector_visible(True)
+            self.refresh_backends(force=True)
+            selected_backend = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+            self._update_backend_summary(selected_backend)
         self._update_context_legend()
 
     def action_start_service(self) -> None:
@@ -858,6 +1015,15 @@ class ElizaTUI(App):
         self._launch_service_operation("start", service_name, profile, health_url)
 
     def action_setup_service(self) -> None:
+        if self._active_tab() == "backends_tab":
+            backend_name = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+            if not backend_name:
+                self.notify("No backend selected!", severity="error")
+                return
+            self.notify(f"Installing backend {backend_name}...", severity="information")
+            self._launch_backend_operation("install", backend_name)
+            return
+
         if self._active_tab() != "services_tab":
             return
 
@@ -1002,6 +1168,52 @@ class ElizaTUI(App):
         self.stack.services[service_name] = replace(current_service, profile_id=selected_profile.name)
         health_url = self.stack.services[service_name].health_url
         self._launch_service_operation("restart", service_name, selected_profile.name, health_url)
+
+    def action_update_backend(self) -> None:
+        if self._active_tab() != "backends_tab":
+            return
+
+        backend_name = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+        if not backend_name:
+            self.notify("No backend selected", severity="error")
+            return
+
+        self.notify(f"Updating backend {backend_name}...", severity="information")
+        self._launch_backend_operation("update", backend_name)
+
+    def action_uninstall_backend(self) -> None:
+        if self._active_tab() != "backends_tab":
+            return
+
+        backend_name = self.query_one("#backend_table", BackendTable).get_selected_backend_name()
+        if not backend_name:
+            self.notify("No backend selected", severity="error")
+            return
+
+        dialog = ConfirmDialog(
+            "Uninstall Backend",
+            (
+                f"Reset backend '{backend_name}' for reinstall?\n\n"
+                "This removes runtime artifacts but keeps source checkout by default."
+            ),
+        )
+        self.push_screen(
+            dialog,
+            callback=lambda confirmed: self._handle_backend_uninstall_confirmation(bool(confirmed), backend_name),
+        )
+
+    def _handle_backend_uninstall_confirmation(self, confirmed: bool, backend_name: str) -> None:
+        if not confirmed:
+            return
+        self.notify(f"Uninstalling backend {backend_name}...", severity="information")
+        self._launch_backend_operation("uninstall", backend_name)
+
+    def action_verify_backends(self) -> None:
+        if self._active_tab() != "backends_tab":
+            return
+        self.refresh_backends(force=True)
+        self._update_backend_summary(self._selected_backend_name())
+        self.notify("Backend statuses refreshed", severity="information")
 
     def action_delete_model(self) -> None:
         if self._active_tab() != "models_tab":
