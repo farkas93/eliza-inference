@@ -461,6 +461,50 @@ class ElizaTUI(App):
         self._operation_thread = threading.Thread(target=worker, daemon=True)
         self._operation_thread.start()
 
+    def _launch_model_download_operation(self, service_name: str, profile_name: str, before_size_bytes: int) -> None:
+        if self._service_operation_active():
+            self.notify("Another operation is still running", severity="warning")
+            return
+
+        self._operation_service_name = service_name
+        self._operation_action = "download"
+        self._last_warning = ""
+        self._set_activity(f"{service_name} download: queued ({profile_name})", busy=True)
+
+        def worker() -> None:
+            try:
+                self._enqueue_progress("download", service_name, f"Downloading model artifacts ({profile_name})")
+                self.executor.download_model(service_name, profile_name)
+                self._events.put(
+                    (
+                        "success",
+                        {
+                            "kind": "model_download",
+                            "action": "download",
+                            "service_name": service_name,
+                            "profile": profile_name,
+                            "before_size_bytes": str(before_size_bytes),
+                            "log_path": "",
+                        },
+                    )
+                )
+            except Exception as exc:
+                self._events.put(
+                    (
+                        "error",
+                        {
+                            "kind": "model_download",
+                            "action": "download",
+                            "service_name": service_name,
+                            "profile": profile_name,
+                            "message": str(exc),
+                        },
+                    )
+                )
+
+        self._operation_thread = threading.Thread(target=worker, daemon=True)
+        self._operation_thread.start()
+
     def _process_events(self) -> None:
         handled = False
         while True:
@@ -473,11 +517,13 @@ class ElizaTUI(App):
             kind = payload.get("kind", "service")
             action = payload.get("action", "")
             service_name = payload.get("service_name", "")
+            profile_name = payload.get("profile", "")
             if event_type == "progress":
                 message = payload.get("message", "Working")
                 self._set_activity(f"{service_name} {action}: {message}", busy=True)
             elif event_type == "success":
                 log_path = payload.get("log_path", "")
+                selected_profile: Profile | None = None
                 if kind == "backend":
                     self.refresh_backends(force=True)
                     if action == "install":
@@ -487,6 +533,23 @@ class ElizaTUI(App):
                     elif action == "uninstall":
                         self.notify(f"Uninstalled backend {service_name}", severity="information")
                     self._update_backend_summary(service_name)
+                elif kind == "model_download":
+                    self.refresh_model_inventory()
+                    state = self.profile_states.get(profile_name)
+                    if state is None or not state.ready:
+                        self.notify(
+                            f"Artifacts still missing after download for {profile_name}",
+                            severity="error",
+                        )
+                    else:
+                        before_size = int(payload.get("before_size_bytes", "0") or "0")
+                        after_size = self._paths_size(state.expected_paths)
+                        delta = max(after_size - before_size, 0)
+                        self.notify(
+                            f"Download complete for {profile_name}: +{self._human_size(delta)} (total {self._human_size(after_size)})",
+                            severity="information",
+                        )
+                        selected_profile = self.stack.profiles.get(profile_name)
                 else:
                     self.refresh_stack_state(force=True)
                     if log_path:
@@ -502,9 +565,14 @@ class ElizaTUI(App):
                 self._operation_service_name = None
                 self._operation_action = None
                 self._operation_thread = None
+                if selected_profile is not None:
+                    self._apply_profile_selection(service_name, selected_profile)
             elif event_type == "error":
                 message = payload.get("message", "unknown error")
-                self.notify(f"Failed to {action} {service_name}: {message}", severity="error")
+                if kind == "model_download" and profile_name:
+                    self.notify(f"Download failed for {profile_name}: {message}", severity="error")
+                else:
+                    self.notify(f"Failed to {action} {service_name}: {message}", severity="error")
                 self._set_activity(f"{service_name} {action}: failed", busy=False, severity="error")
                 self._operation_service_name = None
                 self._operation_action = None
@@ -1134,29 +1202,7 @@ class ElizaTUI(App):
             self.notify(f"Profile state missing for {selected_profile.name}", severity="error")
             return
         before_size = self._paths_size(state.expected_paths)
-        try:
-            self.executor.download_model(service_name, selected_profile.name)
-        except Exception as exc:
-            self.notify(f"Download failed for {selected_profile.name}: {exc}", severity="error")
-            return
-
-        self.refresh_model_inventory()
-        state = self.profile_states.get(selected_profile.name)
-        if state is None or not state.ready:
-            self.notify(
-                f"Artifacts still missing after download for {selected_profile.name}",
-                severity="error",
-            )
-            return
-
-        after_size = self._paths_size(state.expected_paths)
-        delta = max(after_size - before_size, 0)
-        self.notify(
-            f"Download complete for {selected_profile.name}: +{self._human_size(delta)} (total {self._human_size(after_size)})",
-            severity="information",
-        )
-
-        self._apply_profile_selection(service_name, selected_profile)
+        self._launch_model_download_operation(service_name, selected_profile.name, before_size)
 
     def _apply_profile_selection(self, service_name: str, selected_profile: Profile) -> None:
         current_service = self.stack.services.get(service_name)
