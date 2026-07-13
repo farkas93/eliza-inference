@@ -173,6 +173,7 @@ class ElizaTUI(App):
         self._model_inventory_snapshot: tuple[tuple[str, str, int, tuple[str, ...]], ...] = ()
         self._backend_snapshot: tuple[tuple[str, bool, str, str, str], ...] = ()
         self._refreshing_model_inventory = False
+        self._refresh_pending = False
         self._events: queue.Queue[tuple[str, dict[str, str]]] = queue.Queue()
         self._operation_thread: threading.Thread | None = None
         self._operation_service_name: str | None = None
@@ -795,10 +796,19 @@ class ElizaTUI(App):
         self._service_snapshot = self._current_service_snapshot()
 
     def refresh_model_inventory(self) -> None:
+        """Refresh model inventory. Debounces rapid calls; offloads blocking work to a thread."""
+        # Debounce: if a refresh is already pending, skip
         if self._refreshing_model_inventory:
             return
-
         self._refreshing_model_inventory = True
+
+        # Run blocking work in a thread to avoid freezing the event loop
+        import asyncio
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, self._refresh_model_inventory_worker)
+
+    def _refresh_model_inventory_worker(self) -> None:
+        """Blocking work (HF API calls, disk walks) runs in a thread pool."""
         try:
             profile_states = self.model_manager.build_profile_states(self.stack.profiles, self.stack.services)
             model_entries = self.model_manager.list_models(self.stack.profiles)
@@ -809,23 +819,38 @@ class ElizaTUI(App):
             profiles_changed = new_profile_snapshot != self._profile_snapshot
             models_changed = new_model_snapshot != self._model_inventory_snapshot
 
-            self.profile_states = profile_states
-            self.model_entries = model_entries
-            self.model_entries_by_path = {entry.path: entry for entry in self.model_entries}
-            if profiles_changed:
-                self._refresh_profile_list()
-            if models_changed:
-                self._refresh_model_table()
+            # Update UI on the event loop thread
+            self.call_from_thread(self._apply_refresh_results, profile_states, model_entries, profiles_changed, models_changed, new_profile_snapshot, new_model_snapshot)
+        except Exception:
+            self.call_from_thread(self._unlock_refresh)
 
-            self._profile_snapshot = new_profile_snapshot
-            self._model_inventory_snapshot = new_model_snapshot
-        finally:
-            self._refreshing_model_inventory = False
+    def _apply_refresh_results(self, profile_states, model_entries, profiles_changed, models_changed, new_profile_snapshot, new_model_snapshot) -> None:
+        self.profile_states = profile_states
+        self.model_entries = model_entries
+        self.model_entries_by_path = {entry.path: entry for entry in self.model_entries}
+        if profiles_changed:
+            self._refresh_profile_list()
+        if models_changed:
+            self._refresh_model_table()
+
+        self._profile_snapshot = new_profile_snapshot
+        self._model_inventory_snapshot = new_model_snapshot
+        self._refreshing_model_inventory = False
+
+    def _unlock_refresh(self) -> None:
+        self._refreshing_model_inventory = False
 
     def refresh_stack_state(self, force: bool = False) -> None:
         self.stack = self.engine.discover()
         if force or self._current_service_snapshot() != self._service_snapshot:
             self._refresh_service_table()
+        self._refresh_pending = True
+        self.call_later(self._maybe_refresh_model_inventory)
+
+    def _maybe_refresh_model_inventory(self) -> None:
+        if not self._refresh_pending:
+            return
+        self._refresh_pending = False
         self.refresh_model_inventory()
 
     def _update_context_legend(self) -> None:

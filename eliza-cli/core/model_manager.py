@@ -5,12 +5,18 @@ import os
 import pathlib
 import re
 import shutil
+import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from .models import Profile, Service
+
+# TTL for cached HF API size estimates (seconds)
+_SIZE_CACHE_TTL = 60.0
+# TTL for cached profile env reads (seconds)
+_ENV_CACHE_TTL = 30.0
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,8 @@ class ModelManager:
         self.root_dir = root_dir
         self.env = self._load_env()
         self.model_home = pathlib.Path(self.env["MODEL_HOME"]).expanduser().resolve()
+        self._profile_env_cache: dict[str, tuple[float, dict[str, str]]] = {}
+        self._estimate_size_cache: dict[str, tuple[float, int | None]] = {}
 
     def _load_env(self) -> Dict[str, str]:
         env: Dict[str, str] = {}
@@ -68,6 +76,12 @@ class ModelManager:
         return defaults
 
     def _load_profile_env(self, profile: Profile) -> Dict[str, str]:
+        cached = self._profile_env_cache.get(profile.name)
+        if cached is not None:
+            ts, data = cached
+            if time.monotonic() - ts < _ENV_CACHE_TTL:
+                return data
+
         data: Dict[str, str] = {}
         with open(profile.path, "r", encoding="utf-8") as handle:
             for line in handle:
@@ -76,6 +90,8 @@ class ModelManager:
                     continue
                 key, value = line.split("=", 1)
                 data[key.strip()] = value.strip().strip('"').strip("'")
+
+        self._profile_env_cache[profile.name] = (time.monotonic(), data)
         return data
 
     def _resolve_value(self, value: str, profile_env: Dict[str, str]) -> str:
@@ -145,7 +161,13 @@ class ModelManager:
         return total
 
     def _estimate_download_size(self, profile: Profile) -> int | None:
-        """Query HF API to estimate download size for a profile. Returns None on failure."""
+        """Query HF API to estimate download size for a profile. Results cached for _SIZE_CACHE_TTL seconds."""
+        cached = self._estimate_size_cache.get(profile.name)
+        if cached is not None:
+            ts, size = cached
+            if time.monotonic() - ts < _SIZE_CACHE_TTL:
+                return size
+
         profile_env = self._load_profile_env(profile)
 
         model_repo = profile_env.get("MODEL_REPO", "").strip()
@@ -171,17 +193,20 @@ class ModelManager:
             repo = model_id
             include_patterns = []  # entire snapshot
         else:
+            self._estimate_size_cache[profile.name] = (time.monotonic(), None)
             return None
 
         try:
             url = f"https://huggingface.co/api/models/{repo}/tree/main?recursive=True"
             req = Request(url, method="GET")
-            with urlopen(req, timeout=10) as resp:
+            with urlopen(req, timeout=3) as resp:
                 data = json.load(resp)
         except (URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            self._estimate_size_cache[profile.name] = (time.monotonic(), None)
             return None
 
         if not isinstance(data, list):
+            self._estimate_size_cache[profile.name] = (time.monotonic(), None)
             return None
 
         total = 0
@@ -198,7 +223,9 @@ class ModelManager:
             else:
                 total += int(size)
 
-        return total if total > 0 else None
+        result = total if total > 0 else None
+        self._estimate_size_cache[profile.name] = (time.monotonic(), result)
+        return result
 
     def build_profile_states(
         self,
