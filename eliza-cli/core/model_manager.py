@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
 import shutil
 from dataclasses import dataclass
 from typing import Dict, Iterable, List
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from .models import Profile, Service
 
@@ -141,6 +144,62 @@ class ModelManager:
                     continue
         return total
 
+    def _estimate_download_size(self, profile: Profile) -> int | None:
+        """Query HF API to estimate download size for a profile. Returns None on failure."""
+        profile_env = self._load_profile_env(profile)
+
+        model_repo = profile_env.get("MODEL_REPO", "").strip()
+        model_id = profile_env.get("MODEL_ID", "").strip()
+        include_patterns: list[str] = []
+
+        if model_repo:
+            repo = model_repo
+            model_file = profile_env.get("MODEL_FILE", "").strip()
+            mmproj_file = profile_env.get("MMPROJ_FILE", "").strip()
+            hf_include_model = profile_env.get("HF_INCLUDE_MODEL", "").strip()
+            hf_include_config = profile_env.get("HF_INCLUDE_CONFIG", "").strip()
+            model_config_file = profile_env.get("MODEL_CONFIG_FILE", "").strip()
+            if hf_include_model:
+                include_patterns.append(hf_include_model)
+            if hf_include_config:
+                include_patterns.append(hf_include_config)
+            if model_file:
+                include_patterns.append(model_file)
+            if mmproj_file:
+                include_patterns.append(mmproj_file)
+        elif model_id:
+            repo = model_id
+            include_patterns = []  # entire snapshot
+        else:
+            return None
+
+        try:
+            url = f"https://huggingface.co/api/models/{repo}/tree/main?recursive=True"
+            req = Request(url, method="GET")
+            with urlopen(req, timeout=10) as resp:
+                data = json.load(resp)
+        except (URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return None
+
+        if not isinstance(data, list):
+            return None
+
+        total = 0
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            path = entry.get("path", "")
+            size = entry.get("size", 0)
+            if not isinstance(size, (int, float)):
+                continue
+            if include_patterns:
+                if any(pattern in path for pattern in include_patterns):
+                    total += int(size)
+            else:
+                total += int(size)
+
+        return total if total > 0 else None
+
     def build_profile_states(
         self,
         profiles: Dict[str, Profile],
@@ -162,6 +221,8 @@ class ModelManager:
             else:
                 model_location = "N/A"
 
+            estimated_size = self._estimate_download_size(profile)
+
             states[profile.name] = ProfileState(
                 profile_name=profile.name,
                 service_name=profile.service_name,
@@ -169,7 +230,7 @@ class ModelManager:
                 deployed=profile.name in deployed_profiles,
                 expected_paths=tuple(str(path) for path in expected_paths),
                 model_location=model_location,
-                estimated_download_size_bytes=None,
+                estimated_download_size_bytes=estimated_size,
             )
         return states
 

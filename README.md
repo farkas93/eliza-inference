@@ -2,6 +2,8 @@
 
 DGX Spark-first local inference stack exposing `eliza-small` for low-latency voice turns and `eliza-medium` for larger reasoning/coding tasks.
 
+Handoff context for the GenieTor + Vocode effort is tracked in `next-task.md`.
+
 ## Defaults
 
 | Service | Default Runtime | Default Model | Port |

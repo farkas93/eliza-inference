@@ -473,8 +473,8 @@ class ElizaTUI(App):
 
         def worker() -> None:
             try:
-                self._enqueue_progress("download", service_name, f"Downloading model artifacts ({profile_name})")
-                self.executor.download_model(service_name, profile_name)
+                progress_callback = lambda msg: self._enqueue_progress("download", service_name, msg)
+                self.executor.download_model(service_name, profile_name, progress_callback=progress_callback)
                 self._events.put(
                     (
                         "success",
@@ -557,6 +557,14 @@ class ElizaTUI(App):
                     if action == "setup":
                         self.refresh_model_inventory()
                         self.notify(f"Setup complete for {service_name}", severity="information")
+                        # Auto-download model artifacts if still missing
+                        svc = self.stack.services.get(service_name)
+                        if svc is not None:
+                            pid = svc.profile_id
+                            state = self.profile_states.get(pid)
+                            if state is not None and not state.ready:
+                                before_size = self._paths_size(state.expected_paths)
+                                self._launch_model_download_operation(service_name, pid, before_size)
                     elif action == "start":
                         self.notify(f"Started {service_name}", severity="information")
                     elif action == "restart":

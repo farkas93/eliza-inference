@@ -3,6 +3,7 @@ import pathlib
 import logging
 import os
 import shutil
+import threading
 import time
 from typing import Callable, List
 from urllib.error import URLError
@@ -22,22 +23,66 @@ class Executor:
         self._prepared_profiles: set[str] = set()
         self._prerequisites_ready = False
 
-    def _run_command(self, command_args: list[str], cwd: pathlib.Path = None) -> subprocess.CompletedProcess:
-        """Run a command in the root directory or a specific subdirectory."""
+    def _run_command(self, command_args: list[str], cwd: pathlib.Path = None, progress_callback: Callable[[str], None] | None = None) -> subprocess.CompletedProcess:
+        """Run a command. When progress_callback is set, streams stderr line by line."""
         target_cwd = cwd or self.root_dir
+        if progress_callback is None:
+            try:
+                result = subprocess.run(
+                    command_args,
+                    cwd=target_cwd,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                return result
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Command failed: {' '.join(command_args)}\nError: {e.stderr}")
+                raise ExecutionError(f"Command '{' '.join(command_args)}' failed with exit code {e.returncode}: {e.stderr.strip()}")
+            except Exception as e:
+                logger.error(f"Unexpected error running command: {e}")
+                raise ExecutionError(str(e))
+
         try:
-            # Use shell=False for security and better signal handling
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 command_args,
                 cwd=target_cwd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                check=True
             )
-            return result
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {' '.join(command_args)}\nError: {e.stderr}")
-            raise ExecutionError(f"Command '{' '.join(command_args)}' failed with exit code {e.returncode}: {e.stderr.strip()}")
+
+            stdout_lines: list[str] = []
+            stderr_lines: list[str] = []
+
+            def read_stream(stream, lines, is_stderr):
+                for line in stream:
+                    lines.append(line)
+                    if is_stderr:
+                        stripped = line.rstrip('\n')
+                        if stripped:
+                            progress_callback(stripped)
+
+            t_out = threading.Thread(target=read_stream, args=(proc.stdout, stdout_lines, False), daemon=True)
+            t_err = threading.Thread(target=read_stream, args=(proc.stderr, stderr_lines, True), daemon=True)
+            t_out.start()
+            t_err.start()
+            t_out.join()
+            t_err.join()
+
+            proc.wait()
+
+            if proc.returncode != 0:
+                stderr_text = ''.join(stderr_lines)
+                logger.error(f"Command failed: {' '.join(command_args)}\nError: {stderr_text}")
+                raise ExecutionError(f"Command '{' '.join(command_args)}' failed with exit code {proc.returncode}: {stderr_text.strip()}")
+
+            return subprocess.CompletedProcess(
+                args=command_args,
+                returncode=proc.returncode,
+                stdout=''.join(stdout_lines),
+                stderr=''.join(stderr_lines),
+            )
         except Exception as e:
             logger.error(f"Unexpected error running command: {e}")
             raise ExecutionError(str(e))
@@ -407,8 +452,8 @@ class Executor:
             self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
         return str(self.root_dir / "logs" / f"{service_name}.log")
 
-    def download_model(self, service_name: str, profile_id: str) -> str:
+    def download_model(self, service_name: str, profile_id: str, progress_callback: Callable[[str], None] | None = None) -> str:
         """Downloads artifacts for a service/profile and returns command output."""
         cmd = ["./scripts/download-models", service_name, "--profile", profile_id]
-        result = self._run_command(cmd)
+        result = self._run_command(cmd, progress_callback=progress_callback)
         return (result.stdout or "").strip()
