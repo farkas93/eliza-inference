@@ -25,6 +25,8 @@ _LINE_RE = re.compile(
 
 # Default wear log path (relative to project root)
 _DEFAULT_WEAR_LOG = Path(__file__).resolve().parents[1] / ".runtime" / "kv-wear-raw.log"
+# Default main DS4 log (created by scripts/start via tee)
+_DEFAULT_BACKFILL_LOG = Path(__file__).resolve().parents[1] / "logs" / "eliza-medium.log"
 
 
 def _size_bytes(val: float, unit: str) -> int:
@@ -80,6 +82,17 @@ def main() -> int:
         help=f"Path to wear log (default: {_DEFAULT_WEAR_LOG})",
     )
     parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Parse the main DS4 log instead of the wear log (backfill from before the awk filter was installed)",
+    )
+    parser.add_argument(
+        "--backfill-log",
+        type=Path,
+        default=_DEFAULT_BACKFILL_LOG,
+        help=f"Main DS4 log path for backfill (default: {_DEFAULT_BACKFILL_LOG})",
+    )
+    parser.add_argument(
         "--today",
         action="store_true",
         help="Only show today's total",
@@ -97,7 +110,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    totals = parse_lines(args.wear_log)
+    source_log = args.backfill_log if args.backfill else args.wear_log
+    totals = parse_lines(source_log)
     if not totals:
         print("No KV wear data found." if not args.json else json.dumps({"days": {}, "total_mb": 0}))
         return 0
