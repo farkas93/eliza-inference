@@ -41,5 +41,13 @@ if [[ -n "${DS4_EXTRA_ARGS:-}" ]]; then
   cmd+=("${extra_args[@]}")
 fi
 
+WEAR_LOG="${DS4_WEAR_LOG:-$ROOT_DIR/.runtime/kv-wear-raw.log}"
+mkdir -p "$(dirname "$WEAR_LOG")"
 echo "Starting eliza-medium ds4: ${cmd[*]}"
-exec "${cmd[@]}"
+echo "KV wear log: $WEAR_LOG"
+
+# Run ds4-server, pass all output through, and tee kv cache stored lines to wear log
+"${cmd[@]}" 2>&1 | awk -v wear="$WEAR_LOG" '
+  /kv cache stored/ { print >> wear; print; next }
+  { print }
+'

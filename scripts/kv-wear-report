@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Report daily KV cache write activity from DS4 server logs.
+
+Parses .runtime/kv-wear-raw.log for lines matching:
+    kv cache stored size=<bytes>
+
+Aggregates per calendar day and prints MB totals.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+# Matches lines like:
+#   [2026-07-14 10:30:00.123] kv cache stored size=12345678 ...
+_LINE_RE = re.compile(
+    r"^\[(\d{4})-(\d{2})-(\d{2})\s.*?\]\s.*kv cache stored size=(\d+)"
+)
+
+# Default wear log path (relative to project root)
+_DEFAULT_WEAR_LOG = Path(__file__).resolve().parents[1] / ".runtime" / "kv-wear-raw.log"
+
+
+def parse_lines(path: Path) -> dict[str, int]:
+    """Return dict mapping 'YYYY-MM-DD' -> total bytes from the wear log."""
+    totals: dict[str, int] = {}
+    if not path.exists():
+        return totals
+
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            m = _LINE_RE.match(line)
+            if m:
+                y, mo, d, size_str = m.group(1), m.group(2), m.group(3), m.group(4)
+                day = f"{y}-{mo}-{d}"
+                totals[day] = totals.get(day, 0) + int(size_str)
+
+    return totals
+
+
+def _fmt_mb(bytes_: int) -> str:
+    return f"{bytes_ / (1024 * 1024):.1f}"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Report daily KV cache write activity from DS4 logs."
+    )
+    parser.add_argument(
+        "--wear-log",
+        type=Path,
+        default=_DEFAULT_WEAR_LOG,
+        help=f"Path to wear log (default: {_DEFAULT_WEAR_LOG})",
+    )
+    parser.add_argument(
+        "--today",
+        action="store_true",
+        help="Only show today's total",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=0,
+        help="Show last N days of data (0 = all)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON instead of a table",
+    )
+    args = parser.parse_args()
+
+    totals = parse_lines(args.wear_log)
+    if not totals:
+        print("No KV wear data found." if not args.json else json.dumps({"days": {}, "total_mb": 0}))
+        return 0
+
+    # Filter
+    if args.today:
+        today_str = date.today().isoformat()
+        totals = {k: v for k, v in totals.items() if k == today_str}
+        if not totals:
+            print(f"No data for {today_str}." if not args.json else json.dumps({"today_mb": 0}))
+            return 0
+
+    if args.days > 0:
+        cutoff = date.fromordinal(date.today().toordinal() - args.days)
+        totals = {
+            k: v
+            for k, v in totals.items()
+            if date.fromisoformat(k) >= cutoff
+        }
+
+    # Sort by date
+    sorted_days = sorted(totals.items())
+
+    if args.json:
+        out = {
+            "days": {day: round(b / (1024 * 1024), 1) for day, b in sorted_days},
+            "total_mb": round(sum(totals.values()) / (1024 * 1024), 1),
+        }
+        print(json.dumps(out, indent=2))
+        return 0
+
+    # Table output
+    total_bytes = sum(totals.values())
+    print(f"{'Date':<14} {'Writes (MB)':<14}")
+    print("-" * 28)
+    for day, bytes_ in sorted_days:
+        print(f"{day:<14} {_fmt_mb(bytes_):>8}")
+    print("-" * 28)
+    print(f"{'Total':<14} {_fmt_mb(total_bytes):>8}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
