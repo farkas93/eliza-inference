@@ -2,7 +2,8 @@
 """Report daily KV cache write activity from DS4 server logs.
 
 Parses .runtime/kv-wear-raw.log for lines matching:
-    kv cache stored size=<bytes>
+    0714 19:51:09 ds4-server: kv cache stored ... size=291.80 MiB ...
+    0714 19:51:09 ds4-server: kv cache evicted ... size=291.80 MiB ...
 
 Aggregates per calendar day and prints MB totals.
 """
@@ -16,14 +17,35 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# Matches lines like:
-#   [2026-07-14 10:30:00.123] kv cache stored size=12345678 ...
+# Matches DS4 log lines with MMDD HH:mm:ss timestamps and size in MiB/KiB.
+# Groups: 1=month, 2=day, 3=size_value, 4=unit (MiB|KiB)
 _LINE_RE = re.compile(
-    r"^\[(\d{4})-(\d{2})-(\d{2})\s.*?\]\s.*kv cache stored size=(\d+)"
+    r"^(\d{2})(\d{2})\s\d{2}:\d{2}:\d{2}\s.*?kv cache (?:stored|evicted).*?size=(\d+\.?\d*)\s*(MiB|KiB)"
 )
 
 # Default wear log path (relative to project root)
 _DEFAULT_WEAR_LOG = Path(__file__).resolve().parents[1] / ".runtime" / "kv-wear-raw.log"
+
+
+def _size_bytes(val: float, unit: str) -> int:
+    if unit == "MiB":
+        return int(val * 1024 * 1024)
+    if unit == "KiB":
+        return int(val * 1024)
+    return int(val)
+
+
+def _mmyy_to_iso(mm: str, dd: str) -> str:
+    """Convert MMDD to YYYY-MM-DD using the current year.
+    If the month is ahead of today's month, assume previous year.
+    """
+    today = date.today()
+    mo = int(mm)
+    if mo > today.month:
+        year = today.year - 1
+    else:
+        year = today.year
+    return f"{year}-{mm}-{dd}"
 
 
 def parse_lines(path: Path) -> dict[str, int]:
@@ -36,9 +58,9 @@ def parse_lines(path: Path) -> dict[str, int]:
         for line in f:
             m = _LINE_RE.match(line)
             if m:
-                y, mo, d, size_str = m.group(1), m.group(2), m.group(3), m.group(4)
-                day = f"{y}-{mo}-{d}"
-                totals[day] = totals.get(day, 0) + int(size_str)
+                mm, dd, size_str, unit = m.group(1), m.group(2), m.group(3), m.group(4)
+                day = _mmyy_to_iso(mm, dd)
+                totals[day] = totals.get(day, 0) + _size_bytes(float(size_str), unit)
 
     return totals
 
