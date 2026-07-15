@@ -172,7 +172,7 @@ medium/qwen3_6-27b-fp8-vllm-32k
 medium/qwen3_6-27b-fp8-vllm-128k
 medium/qwen3_6-27b-fp8-vllm-256k
 medium/qwen3_6-27b-fp8-vllm-256k-kvfp8
-medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+medium/qwen3.6-35b-a3b-q4-llamacpp-256k
 ```
 
 Stop `eliza-small` before testing larger `eliza-medium` profiles.

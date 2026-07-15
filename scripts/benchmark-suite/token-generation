@@ -22,7 +22,7 @@ Options:
 
 Examples:
   ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
   exit 0
 fi
@@ -79,7 +79,7 @@ Options:
 
 Examples:
   ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
       exit 0
       ;;

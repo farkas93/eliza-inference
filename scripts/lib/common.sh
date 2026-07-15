@@ -79,7 +79,7 @@ usage_service_profile() {
 Usage: ./scripts/$command_name <service> [--profile <profile-name>]
 
 Examples:
-  ./scripts/$command_name eliza-medium --profile medium/qwen3_6-35b-a3b-q4-llamacpp-256k
+  ./scripts/$command_name eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
   ./scripts/$command_name eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
 USAGE
 }
@@ -114,7 +114,7 @@ resolve_profile_path() {
     medium/qwen-vllm-256k|medium/eliza-medium-qwen-vllm-256k|medium/qwen-vllm-200k-experimental|medium/eliza-medium-qwen-vllm-200k-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k" ;;
     medium/qwen-vllm-256k-kvfp8|medium/eliza-medium-qwen-vllm-256k-kvfp8|medium/qwen-vllm-200k-fp8kv-experimental|medium/eliza-medium-qwen-vllm-200k-fp8kv-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k-kvfp8" ;;
     medium/qwen-vllm-256k-native|medium/eliza-medium-qwen-vllm-256k-native|medium/qwen-vllm-262k-experimental|medium/eliza-medium-qwen-vllm-262k-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k-native" ;;
-    medium/qwen36-35b-a3b-llamacpp-256k|medium/eliza-medium-qwen36-35b-a3b-llamacpp-256k|medium/qwen36-35b-a3b-llamacpp-200k-experimental|medium/eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental) profile="medium/qwen3_6-35b-a3b-q4-llamacpp-256k" ;;
+    medium/qwen36-35b-a3b-llamacpp-256k|medium/eliza-medium-qwen36-35b-a3b-llamacpp-256k|medium/qwen36-35b-a3b-llamacpp-200k-experimental|medium/eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental) profile="medium/qwen3.6-35b-a3b-q4-llamacpp-256k" ;;
     medium/gemma4-26b-a4b-llamacpp-256k-experimental|medium/eliza-medium-gemma4-26b-a4b-llamacpp-256k-experimental) profile="medium/gemma4-26b-a4b-q4-llamacpp-256k" ;;
     medium/vllm-smoke-tinyllama|medium/eliza-medium-vllm-smoke-tinyllama) profile="medium/tinyllama-1_1b-vllm-2k" ;;
     medium/deepseek-v4-flash-ds4-256k|medium/eliza-medium-deepseek-v4-flash-ds4-256k) profile="medium/deepseek-v4-flash-ds4-256k" ;;
@@ -173,7 +173,7 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      eliza-medium) PROFILE="medium/qwen3_6-35b-a3b-q4-llamacpp-256k" ;;
+      eliza-medium) PROFILE="medium/qwen3.6-35b-a3b-q4-llamacpp-256k" ;;
       eliza-small) PROFILE="small/gemma4-e2b-q4-llamacpp-128k" ;;
       stt) PROFILE="stt/faster-whisper-small-cpu" ;;
       tts) PROFILE="tts/piper-lessac" ;;

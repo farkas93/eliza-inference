@@ -23,6 +23,10 @@ cmd=(
   --port "${PORT:-8001}"
 )
 
+if [[ -n "${QUANTIZATION:-}" ]]; then
+  cmd+=(--quantization "$QUANTIZATION")
+fi
+
 if [[ -n "${TP_SIZE:-}" ]]; then
   cmd+=(--tp-size "$TP_SIZE")
 fi

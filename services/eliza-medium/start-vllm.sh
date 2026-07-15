@@ -23,6 +23,10 @@ cmd=(
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.50}"
 )
 
+if [[ -n "${QUANTIZATION:-}" ]]; then
+  cmd+=(--quantization "$QUANTIZATION")
+fi
+
 if [[ "${KV_CACHE_DTYPE:-auto}" != "auto" ]]; then
   cmd+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
 fi
