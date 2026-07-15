@@ -6,7 +6,7 @@ DS4_DIR="${DS4_DIR:-$HOME/src/ds4}"
 DS4_SERVER_BIN="${DS4_SERVER_BIN:-$DS4_DIR/ds4-server}"
 MODEL_PATH="${MODEL_PATH:-${MODEL_DIR:-$DS4_DIR}/${MODEL_FILE:-ds4flash.gguf}}"
 KV_DIR="${DS4_KV_DIR:-$ROOT_DIR/.runtime/ds4-kv}"
-KV_MB="${DS4_KV_MB:-4096}"
+KV_MB="${DS4_KV_MB:-16384}"
 
 if [[ ! -x "$DS4_SERVER_BIN" ]]; then
   if command -v ds4-server >/dev/null 2>&1; then
