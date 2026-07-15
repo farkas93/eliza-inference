@@ -85,4 +85,12 @@ profile = "medium/qwen3.5-122b-a10b-nvfp4-vllm-256k"
 public_name = "qwen3.5-122b-a10b-nvfp4"
 actual_model = "nvidia/Qwen3.5-122B-A10B-NVFP4"
 base_url = "http://127.0.0.1:8001/v1"
-purpose = "large 122B MoE coding, NVFP4 quant (vLLM only)"
+purpose = "large 122B MoE coding, NVFP4 quant (vLLM)"
+
+[models.qwen3.5-122b-a10b-nvfp4-sglang]
+service = "eliza-medium"
+profile = "medium/qwen3.5-122b-a10b-nvfp4-sglang-256k"
+public_name = "qwen3.5-122b-a10b-nvfp4"
+actual_model = "nvidia/Qwen3.5-122B-A10B-NVFP4"
+base_url = "http://127.0.0.1:8001/v1"
+purpose = "large 122B MoE coding, NVFP4 quant (sglang — may need testing)"
