@@ -8,8 +8,8 @@ Handoff context for the GenieTor + Vocode effort is tracked in `next-task.md`.
 
 | Service | Default Runtime | Default Model | Port |
 | --- | --- | --- | ---: |
-| `eliza-medium` | llama.cpp | `ji-farthing/openPangu-2.0-Flash-ik-llama-GGUF` | `8001` |
-| `eliza-small` | llama.cpp | `unsloth/gemma-4-E2B-it-GGUF` | `8002` |
+| `eliza-medium` | DS4 | `deepseek-v4-flash` (DS4 server) | `8001` |
+| `eliza-small` | llama.cpp | `gemma-4-E4B-it` (128k context) | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
 | `vocode-bridge` | FastAPI WS bridge | Vocode turn-based orchestration over local STT -> eliza-small -> TTS | `8021` |
@@ -38,8 +38,8 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 ./scripts/setup stt --profile stt/faster-whisper-small-cpu
 ./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/setup vocode
-./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-128k
-./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/download-models eliza-small
+./scripts/download-models eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
 ./scripts/start-stack
 ./scripts/smoke-test-stack
 ```
@@ -61,19 +61,19 @@ Start speech services independently:
 Start `eliza-medium` separately:
 
 ```bash
-./scripts/download-models eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
-./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/download-models eliza-medium
+./scripts/start eliza-medium
 ./scripts/smoke-test eliza-medium
 ```
 
 Compare `eliza-medium` runtimes (llama.cpp vs SGLang):
 
 ```bash
+./scripts/start eliza-medium --profile medium/qwen3.6-27b-fp8-sglang-32k
+./scripts/smoke-test eliza-medium --profile medium/qwen3.6-27b-fp8-sglang-32k
+
 ./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
 ./scripts/smoke-test eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
-
-./scripts/start eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
-./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
 ```
 
 ## Profiles
@@ -87,18 +87,27 @@ Profiles live under `configs/profiles/` and are grouped by capability/runtime cl
 - `configs/profiles/vocode/`
 - `configs/profiles/voice/`
 
-Use path-style profile IDs in commands, for example `small/gemma4-e2b-q4-llamacpp-128k` or `medium/openpangu-2_0-flash-q4-llamacpp-256k`.
+Use path-style profile IDs in commands, for example `small/gemma4-e4b-q4-llamacpp-128k` or `medium/deepseek-v4-flash-ds4-256k`.
 
 Voice profiles include llama.cpp and vLLM variants so Gemma backends can be compared without changing client code.
 
 ## Common Commands
 
 ```bash
-./scripts/start eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
-./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-128k
+# Defaults (no --profile needed)
+./scripts/start eliza-medium
+./scripts/start eliza-small
+
+# Explicit profile selection
+./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+./scripts/start eliza-small --profile small/gemma4-e4b-q4-llamacpp-128k
+
+# Status, logs, stop
 ./scripts/status eliza-medium
 ./scripts/logs eliza-small
 ./scripts/stop eliza-small
+
+# Benchmarks
 ./scripts/run-benchmark voice-latency eliza-small
 ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens 32768
 ```
@@ -142,5 +151,21 @@ TTS:       http://dgx-spark:8012/v1/audio/speech
 ```
 
 This keeps STT, LLM, and TTS independently reusable by other LAN applications.
+
+## TUI (Terminal UI)
+
+The CLI includes a Textual-based TUI for interactive service monitoring:
+
+```bash
+eliza-cli tui
+```
+
+The TUI shows:
+- Service status (running/stopped) and port mappings
+- Model inventory with download readiness
+- Active service logs (auto-scrolled)
+- Stack configuration overview
+
+Run it alongside your services — it refreshes automatically.
 
 See `docs/` for setup, stack, networking, model, and troubleshooting notes.

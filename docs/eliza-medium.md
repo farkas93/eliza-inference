@@ -1,8 +1,6 @@
 # Eliza Medium
 
-`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is llama.cpp with Qwen3.6 35B A3B GGUF.
-
-The default llama.cpp profile uses `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf`.
+`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is DS4 with `deepseek-v4-flash` (DeepSeek V4 Flash via the DS4 server, 256k context).
 
 ## Profiles
 
@@ -24,20 +22,25 @@ The default llama.cpp profile uses `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf`.
 | `medium/qwen3_6-27b-fp8-vllm-256k-kvfp8` | vLLM | `262144` | vLLM KV fp8 comparison |
 | `medium/qwen3.6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
 | `medium/qwen3_6-27b-fp8-vllm-256k-native` | vLLM | `262144` | vLLM native max-context profile |
-| `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | DS4 256K long-context profile |
+| `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | Default DS4 256K long-context profile |
 
 ## Start
 
 ```bash
-./scripts/download-models eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
-./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
-./scripts/smoke-test eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+# Default profile (DS4 deepseek-v4-flash)
+./scripts/start eliza-medium
+./scripts/smoke-test eliza-medium
+
+# Explicit profile selection
+./scripts/start eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
+./scripts/smoke-test eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
 ```
 
-Start with `medium/qwen3.6-35b-a3b-q4-llamacpp-256k`. If that works, run a memory-footprint check:
+Start with the default DS4 profile. For llama.cpp alternatives, use an explicit profile:
 
 ```bash
-./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k --context-tokens-list 32768,65536,131072,196608,262144
+./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
 ```
 
 openPangu alternative profile and max-context sweep:

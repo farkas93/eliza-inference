@@ -1,19 +1,19 @@
 # Eliza Small
 
-`eliza-small` is the low-latency model service intended for voice turns. It is model/runtime agnostic at the service boundary, but the default profile currently uses Gemma 4 E2B through llama.cpp.
+`eliza-small` is the low-latency model service intended for voice turns. It is model/runtime agnostic at the service boundary, but the default profile currently uses Gemma 4 E4B through llama.cpp with 128k context.
 
 ## Default Profile
 
 ```text
-small/gemma4-e2b-q4-llamacpp-8k
+small/gemma4-e4b-q4-llamacpp-128k
 ```
 
 ```text
-Model: unsloth/gemma-4-E2B-it-GGUF
+Model: unsloth/gemma-4-E4B-it-GGUF
 Backend: llama.cpp
 Quant: Q4_K_M
 Projector: mmproj-BF16.gguf
-Context: 8192
+Context: 131072
 Port: 8002
 ```
 
@@ -21,7 +21,7 @@ Port: 8002
 
 | Profile | Backend | Model | Use |
 | --- | --- | --- | --- |
-| `small/gemma4-e2b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E2B | Default low-latency voice model |
+| `small/gemma4-e4b-q4-llamacpp-128k` | llama.cpp | Gemma 4 E4B | Default long-context voice model |
 | `small/gemma4-e4b-q4-llamacpp-8k` | llama.cpp | Gemma 4 E4B | Alternative 8K llama.cpp profile |
 | `small/gemma4-e4b-q4-llamacpp-128k` | llama.cpp | Gemma 4 E4B | Long-context 128K llama.cpp profile |
 | `small/gemma4-12b-q4-llamacpp-8k` | llama.cpp | Gemma 4 12B | Larger Gemma profile on small tier |
@@ -31,10 +31,14 @@ Port: 8002
 ## Start And Test
 
 ```bash
-./scripts/download-models eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
-./scripts/start eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
-./scripts/smoke-test eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
-./scripts/run-benchmark voice-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+# Default profile (gemma4-e4b-128k)
+./scripts/download-models eliza-small
+./scripts/start eliza-small
+./scripts/smoke-test eliza-small
+./scripts/run-benchmark voice-latency eliza-small
+
+# Explicit profile selection
+./scripts/start eliza-small --profile small/gemma4-e4b-q4-llamacpp-128k
 ```
 
 ## Voice Stack
