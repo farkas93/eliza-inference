@@ -820,9 +820,16 @@ class ElizaTUI(App):
             models_changed = new_model_snapshot != self._model_inventory_snapshot
 
             # Update UI on the event loop thread
-            self.call_from_thread(self._apply_refresh_results, profile_states, model_entries, profiles_changed, models_changed, new_profile_snapshot, new_model_snapshot)
+            self._safe_call_from_thread(self._apply_refresh_results, profile_states, model_entries, profiles_changed, models_changed, new_profile_snapshot, new_model_snapshot)
         except Exception:
-            self.call_from_thread(self._unlock_refresh)
+            self._safe_call_from_thread(self._unlock_refresh)
+
+    def _safe_call_from_thread(self, callback, *args, **kwargs) -> None:
+        """Call callback on the event loop thread; silently ignore if app is shutting down."""
+        try:
+            self.call_from_thread(callback, *args, **kwargs)
+        except RuntimeError:
+            pass
 
     def _apply_refresh_results(self, profile_states, model_entries, profiles_changed, models_changed, new_profile_snapshot, new_model_snapshot) -> None:
         self.profile_states = profile_states
