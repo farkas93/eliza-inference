@@ -18,4 +18,4 @@ Start:
 ./scripts/smoke-test vocode-bridge --profile vocode/bridge-local
 ```
 
-The bridge runtime maintains compatibility with existing turn-based clients while exposing a streaming-ready contract for GenieTor.
+The bridge runtime maintains compatibility with existing turn-based clients while exposing a streaming-ready contract.

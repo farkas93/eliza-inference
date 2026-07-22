@@ -1,4 +1,4 @@
-# GenieTor + Vocode Handoff Status (2026-07-12)
+# Vocode + Stack Handoff Status (2026-07-12)
 
 ## Purpose
 
@@ -20,9 +20,6 @@ This document captures:
   - `eliza-small` LLM
   - TTS
 - Keep a **service-oriented** architecture (independent reusable endpoints).
-- Make GenieTor backend-pluggable:
-  - keep Gemini mode,
-  - add local mode (`local-vocode`) without Google credentials.
 - Keep `eliza-small` optimized for low-latency voice turns.
 - Improve ops consistency: setup, smoke testing, health checks, profiles, and benchmark scripts.
 - Move toward stable external aliasing/router model for broader clients.
@@ -37,23 +34,7 @@ This document captures:
 
 ## 2) Where we are now
 
-## 2.1 GenieTor backend abstraction is implemented
-
-Implemented:
-
-- `ElizaLiveSession` + backend interface abstraction.
-- `GeminiLiveBackend` + `LocalVocodeBackend`.
-- Runtime backend choice via env/query (`ELIZA_BACKEND`, `?backend=`).
-
-Key files:
-
-- `genietor-app/server.ts`
-- `genietor-app/lib/eliza-live-sdk/types.ts`
-- `genietor-app/lib/eliza-live-sdk/session.ts`
-- `genietor-app/lib/eliza-live-sdk/backends/gemini-live.ts`
-- `genietor-app/lib/eliza-live-sdk/backends/local-vocode.ts`
-
-## 2.2 Vocode bridge matured from transport spike to orchestration
+## 2.1 Vocode bridge matured from transport spike to orchestration
 
 `vocode-bridge` now performs full turn orchestration with hosted dependencies:
 
@@ -105,13 +86,7 @@ The configured default medium profile/model and documented default are not consi
 
 Impact: confusing operator behavior and benchmark comparisons.
 
-## 3.2 GenieTor README references `.env.example`, but file may be missing
-
-`genietor-app/README.md` says to copy `.env.example`. Ensure file exists and is current.
-
-Impact: onboarding/setup friction.
-
-## 3.3 Audio payload contract risk between bridge/server/frontend
+## 3.2 Audio payload contract risk between bridge/server/frontend
 
 `assistant_audio` is forwarded as base64 payload with mime metadata, while frontend playback path currently assumes a specific sample-rate/PCM interpretation in places.
 
@@ -122,7 +97,7 @@ Impact: potential distortion/silence under format mismatch.
 There is VAD logic in both:
 
 - bridge (`BRIDGE_VAD_*`), and
-- GenieTor server local-vocode handling (`LOCAL_VOCODE_VAD_*`).
+- local-vocode handling (`LOCAL_VOCODE_VAD_*`).
 
 Impact: race conditions, clipping, inconsistent turn-end behavior.
 
@@ -158,13 +133,13 @@ Impact: handoff confusion about whether local mode tools are disabled vs partial
 
 ## 3.9 Transcript visibility path needs architecture review
 
-Spoken user transcript visibility was added to GenieTor UI via a bridge->backend->frontend event chain.
+Spoken user transcript visibility was added via a bridge->backend->frontend event chain.
 
 Need to confirm this architecture remains the right long-term boundary:
 
 - bridge emits `transcript`,
 - local backend maps to typed SDK event,
-- GenieTor server forwards as websocket `userTranscript`,
+- server forwards as websocket `userTranscript`,
 - frontend renders transcripted user messages distinctly from typed messages.
 
 Impact: without a design check, transcript behavior may drift from future backend abstraction and duplicate/ordering edge cases may appear.
@@ -179,9 +154,9 @@ Impact: without a design check, transcript behavior may drift from future backen
    - `configs/eliza-stack.toml`
    - `README.md`
    - `docs/eliza-stack.md`
-2. **Add/verify `genietor-app/.env.example`** for both modes:
-   - `gemini-live`
-   - `local-vocode`
+ 2. **Add/verify `.env.example`** for both modes:
+    - `gemini-live`
+    - `local-vocode`
 3. **Fix and document one audio contract** end-to-end (WAV vs PCM):
    - bridge output
    - server forwarding
@@ -231,7 +206,7 @@ Impact: without a design check, transcript behavior may drift from future backen
 
 The local voice milestone is complete when:
 
-- GenieTor runs with `ELIZA_BACKEND=local-vocode` and no Google key.
+- Backend runs with `ELIZA_BACKEND=local-vocode` and no Google key.
 - End-to-end turn succeeds:
   - audio input -> transcript -> assistant text -> assistant audio -> turn complete.
 - Multi-turn context continuity is validated:
@@ -249,11 +224,6 @@ The local voice milestone is complete when:
 - `services/vocode_bridge/app.py`
 - `configs/profiles/vocode/bridge-local.env`
 - `clients/audio/vocode_bridge_test.py`
-- `genietor-app/server.ts`
-- `genietor-app/lib/eliza-live-sdk/backends/local-vocode.ts`
-- `genietor-app/lib/eliza-live-sdk/types.ts`
-- `genietor-app/app/hooks/use-session-controller.ts`
-- `genietor-app/app/components/conversation-tab.tsx`
 - `docs/vocode-bridge.md`
 - `docs/vocode-pipeline.md`
 - `docs/eliza-stack.md`

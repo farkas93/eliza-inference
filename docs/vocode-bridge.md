@@ -140,14 +140,14 @@ Contract notes:
 
 ## Split-Host Checklist
 
-For GenieTor on `10.42.47.7` and bridge on `10.42.47.8`, configure GenieTor with:
+For the backend on `10.42.47.7` and bridge on `10.42.47.8`, configure with:
 
 ```bash
 ELIZA_BACKEND=local-vocode
 LOCAL_VOCODE_WS_URL=ws://10.42.47.8:8021/ws
 ```
 
-Expected GenieTor session log lines:
+Expected session log lines:
 
 - `Connecting to local vocode bridge` with `wsUrl: ws://10.42.47.8:8021/ws`
 - `Connected to local vocode bridge`
@@ -167,7 +167,7 @@ Then restart bridge and inspect:
 ./scripts/logs vocode-bridge
 ```
 
-For GenieTor server logs, set in chart values:
+For backend server logs, set in chart values:
 
 ```yaml
 env:

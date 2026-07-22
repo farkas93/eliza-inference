@@ -2,7 +2,7 @@
 
 DGX Spark-first local inference stack exposing `eliza-small` for low-latency voice turns and `eliza-medium` for larger reasoning/coding tasks.
 
-Handoff context for the GenieTor + Vocode effort is tracked in `next-task.md`.
+Handoff context for the Vocode effort is tracked in `next-task.md`.
 
 ## Defaults
 
@@ -134,7 +134,7 @@ Reinstall vocode bridge dependencies after local development changes:
 ./scripts/setup vocode --reinstall
 ```
 
-GenieTor local backend smoke test (run GenieTor with `ELIZA_BACKEND=local-vocode` first):
+Local backend smoke test (run with `ELIZA_BACKEND=local-vocode` first):
 
 ```bash
 .venvs/vocode/bin/python clients/audio/genietor_local_backend_test.py --url ws://127.0.0.1:8080/ws
