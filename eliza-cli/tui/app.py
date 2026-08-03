@@ -958,10 +958,21 @@ class ElizaTUI(App):
 
     def update_monitor(self) -> None:
         stats = self.monitor.get_stats()
-        if stats.gpu_name == "N/A" or stats.gpu_memory_total <= 0:
+        if not stats.gpu_present:
             gpu_text = "GPU0 N/A"
-        else:
+        elif stats.gpu_memory_supported and stats.gpu_memory_total > 0:
             gpu_text = f"GPU0 {stats.gpu_name} {stats.gpu_memory_used:.0f}/{stats.gpu_memory_total:.0f} MiB"
+        else:
+            extras: list[str] = []
+            if stats.gpu_util_percent > 0:
+                extras.append(f"util {stats.gpu_util_percent:.0f}%")
+            if stats.gpu_temp_c > 0:
+                extras.append(f"temp {stats.gpu_temp_c:.0f}C")
+            details = " ".join(extras)
+            if details:
+                gpu_text = f"GPU0 {stats.gpu_name} {details} mem n/s"
+            else:
+                gpu_text = f"GPU0 {stats.gpu_name} mem n/s"
 
         disk_text = f"Disk {self._human_size(stats.disk_used_bytes)}/{self._human_size(stats.disk_total_bytes)} ({stats.disk_percent:.0f}%)"
         models_text = f"Models {self._human_size(stats.model_home_used_bytes)}"
