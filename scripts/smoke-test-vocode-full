@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="smoke-test-vocode-full"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+BRIDGE_URL="${BRIDGE_URL:-http://127.0.0.1:8021}"
+WS_URL="${WS_URL:-ws://127.0.0.1:8021/ws}"
+PASS=0
+FAIL=0
+
+pass() { PASS=$((PASS + 1)); echo "  PASS: $*"; }
+fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $*"; }
+
+echo "=== Vocode Bridge Full Integration Test ==="
+echo ""
+
+# --- 1. Upstream service checks ---
+echo "--- Upstream health ---"
+
+for svc in stt eliza-small tts; do
+  case "$svc" in
+    stt) url="${STT_BASE_URL:-http://127.0.0.1:8011/v1}/health" ;;
+    eliza-small) url="${ELIZA_SMALL_BASE_URL:-http://127.0.0.1:8002/v1}/health" ;;
+    tts) url="${TTS_BASE_URL:-http://127.0.0.1:8012/v1}/health" ;;
+  esac
+  if curl -fsS "$url" >/dev/null 2>&1; then
+    pass "$svc health check"
+  else
+    fail "$svc health check — $url unreachable"
+  fi
+done
+
+# --- 2. Bridge health ---
+echo "--- Bridge health ---"
+BRIDGE_HEALTH="$BRIDGE_URL/health"
+bridge_json=$(curl -fsS "$BRIDGE_HEALTH" 2>/dev/null || true)
+if [[ -n "$bridge_json" ]]; then
+  pass "bridge /health responded"
+  echo "$bridge_json" | python3 -m json.tool 2>/dev/null || echo "$bridge_json"
+else
+  fail "bridge /health — $BRIDGE_HEALTH unreachable"
+fi
+
+# --- 3. Full voice turn via WebSocket ---
+echo "--- WebSocket voice turn ---"
+
+if [[ ! -x "$BASE_VENV/bin/python3" ]] && ! command -v python3 >/dev/null 2>&1; then
+  fail "python3 not available — skipping WebSocket test"
+else
+  PYTHON="${BASE_VENV/bin/python3:-python3}"
+  # Generate a minimal PCM16 audio chunk (1 second of silence at 16kHz)
+  pcm_b64=$(python3 -c "
+import base64, struct
+# 1 second of 16kHz PCM16 silence (32000 samples)
+pcm = struct.pack('<' + 'h' * 16000, *([0] * 16000))
+print(base64.b64encode(pcm).decode())
+")
+
+  result=$(
+    python3 -c "
+import asyncio, json, websockets, base64
+
+async def test():
+    ws_url = '$WS_URL'
+    async with websockets.connect(ws_url) as ws:
+        # Wait for ready
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)
+        msg = json.loads(raw)
+        assert msg.get('type') == 'ready', f'expected ready got {msg.get(\"type\")}'
+
+        # Send start
+        await ws.send(json.dumps({'type': 'start'}))
+
+        # Wait for started
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)
+        msg = json.loads(raw)
+        assert msg.get('type') == 'started', f'expected started got {msg.get(\"type\")}'
+
+        # Send audio
+        await ws.send(json.dumps({'type': 'audio_input', 'audio': '$pcm_b64', 'mime_type': 'audio/pcm;rate=16000'}))
+
+        # Wait for audio_received
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)
+        msg = json.loads(raw)
+        assert msg.get('type') == 'audio_received', f'expected audio_received got {msg.get(\"type\")}'
+
+        # Send audio_input_end to force turn
+        await ws.send(json.dumps({'type': 'audio_input_end'}))
+
+        # Collect responses until turn_complete
+        turn_types = set()
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            msg = json.loads(raw)
+            turn_types.add(msg.get('type'))
+            if msg.get('type') == 'turn_complete':
+                break
+            if msg.get('type') == 'error':
+                raise RuntimeError(msg.get('message', 'unknown error'))
+
+        required = {'transcript', 'assistant_text', 'assistant_audio', 'turn_complete'}
+        missing = required - turn_types
+        assert not missing, f'missing events: {missing}'
+        print('OK')
+        return
+
+asyncio.run(test())
+" 2>&1 || echo "FAIL"
+  )
+
+  if [[ "$result" == "OK" ]]; then
+    pass "WebSocket voice turn completed (transcript + assistant_audio + turn_complete)"
+  else
+    fail "WebSocket voice turn: $result"
+  fi
+fi
+
+# --- 4. Multi-turn context test ---
+echo "--- Multi-turn context ---"
+
+if command -v python3 >/dev/null 2>&1; then
+  result=$(
+    python3 -c "
+import asyncio, json, websockets
+
+async def test():
+    ws_url = '$WS_URL'
+    async with websockets.connect(ws_url) as ws:
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)  # ready
+        await ws.send(json.dumps({'type': 'start'}))
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)  # started
+
+        # Turn 1: text message
+        await ws.send(json.dumps({'type': 'user_text', 'text': 'My favorite color is blue.'}))
+        turns = 0
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            msg = json.loads(raw)
+            if msg.get('type') == 'turn_complete':
+                turns += 1
+                break
+            if msg.get('type') == 'error':
+                raise RuntimeError(msg.get('message'))
+
+        # Turn 2: ask about turn 1
+        await ws.send(json.dumps({'type': 'user_text', 'text': 'What is my favorite color?'}))
+        got_assistant = False
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            msg = json.loads(raw)
+            if msg.get('type') == 'assistant_text':
+                if 'blue' in msg.get('text', '').lower():
+                    got_assistant = True
+                break
+            if msg.get('type') == 'turn_complete':
+                break
+            if msg.get('type') == 'error':
+                raise RuntimeError(msg.get('message'))
+
+        print('OK' if got_assistant else 'NO_CONTEXT')
+        return
+
+asyncio.run(test())
+" 2>&1 || echo "FAIL"
+  )
+
+  if [[ "$result" == "OK" ]]; then
+    pass "Multi-turn context — model remembered previous turn"
+  elif [[ "$result" == "NO_CONTEXT" ]]; then
+    fail "Multi-turn context — model did not reference previous turn"
+  else
+    fail "Multi-turn context test: $result"
+  fi
+fi
+
+# --- Summary ---
+echo ""
+echo "=== Results: $PASS passed, $FAIL failed ==="
+if [[ "$FAIL" -gt 0 ]]; then
+  exit 1
+fi
