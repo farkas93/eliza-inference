@@ -16,8 +16,8 @@ Types:
                      then voice-latency for eliza-small
 
 Examples:
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-  ./scripts/run-benchmark voice-latency eliza-small --profile small/gemma4-e2b-q4-llamacpp-8k
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-27b-q4-llamacpp-32k
+  ./scripts/run-benchmark voice-latency eliza-small
   ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens-list 8192,32768,131072
   ./scripts/run-benchmark all
 
@@ -49,10 +49,6 @@ case "$1" in
     ;;
   all)
     shift
-    if [[ $# -gt 0 ]]; then
-      echo "'all' does not accept extra arguments. Run individual benchmark types for custom flags." >&2
-      exit 2
-    fi
     "$SUITE_DIR/token-generation" eliza-medium "$@"
     "$SUITE_DIR/memory-footprint" eliza-medium "$@"
     "$SUITE_DIR/voice-latency" eliza-small "$@"

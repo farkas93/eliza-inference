@@ -21,7 +21,7 @@ Options:
   --show-deltas          Print parsed content/reasoning deltas
 
 Examples:
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-27b-q4-llamacpp-32k --show-raw
   ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
 USAGE
   exit 0
@@ -64,24 +64,6 @@ while [[ $# -gt 0 ]]; do
     --show-deltas)
       SHOW_DELTAS="true"
       shift
-      ;;
-    -h|--help)
-      cat <<USAGE
-Usage: ./scripts/run-benchmark token-generation <service> [--profile <profile-name>] [options]
-
-Options:
-  --max-tokens <n>       Completion token cap (default: 256)
-  --context-tokens <n>   Add approximate synthetic context before prompt
-  --prompt <text>        Prompt to send
-  --prompt-file <path>   Read prompt from file
-  --show-raw             Print raw SSE events before the JSON summary
-  --show-deltas          Print parsed content/reasoning deltas
-
-Examples:
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --show-raw
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k --max-tokens 1024
-USAGE
-      exit 0
       ;;
     *)
       echo "Unknown argument: $1" >&2

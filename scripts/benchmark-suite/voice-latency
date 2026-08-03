@@ -6,6 +6,39 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
+
+# Parse options before service profile
+ROUNDS=3
+OUTPUT_DIR="$ROOT_DIR/benchmarks/results"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      cat <<HELP
+Usage: ./scripts/run-benchmark voice-latency <service> [options]
+
+Options:
+  --profile <profile>  Profile path (default: service default)
+  --rounds <N>         Number of test rounds (default: 3)
+  --help               Show this help
+
+Examples:
+  ./scripts/run-benchmark voice-latency eliza-small
+  ./scripts/run-benchmark voice-latency eliza-small --profile small/gemma4-e4b-q4-llamacpp-128k --rounds 5
+HELP
+      exit 0
+      ;;
+    --rounds)
+      shift
+      ROUNDS="${1:-3}"
+      ;;
+    *)
+      break
+      ;;
+  esac
+  shift
+done
+
 parse_service_profile "$@"
 
 base_url="$(service_base_url)"
@@ -16,6 +49,13 @@ if [[ ! -x "$BASE_VENV/bin/python" ]]; then
   exit 1
 fi
 
+mkdir -p "$OUTPUT_DIR"
+timestamp="$(date -u +%Y%m%dT%H%M%S)"
+output_file="$OUTPUT_DIR/${SERVICE}-${PROFILE##*/}-voice-latency-${timestamp}.json"
+
 "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/voice_test.py" \
   --base-url "$base_url" \
-  --model "$model"
+  --model "$model" \
+  --rounds "$ROUNDS" 2>&1 | tee "$output_file"
+
+echo "Results written to: $output_file"
