@@ -541,6 +541,24 @@ class BridgeSession:
         return self.speech_ms >= self.vad_min_speech_ms and self.trailing_silence_ms >= self.vad_silence_ms
 
 
+# In-memory session registry for debug inspection
+_debug_sessions: dict[str, BridgeSession] = {}
+
+
+@app.get("/debug/sessions")
+def debug_sessions() -> dict[str, Any]:
+    summary = {}
+    for sid, s in _debug_sessions.items():
+        summary[sid] = {
+            "history_turns": len(s.agent.context_history) // 2,
+            "history_messages": len(s.agent.context_history),
+            "sample_rate": s.sample_rate,
+            "vad_enabled": s.vad_enabled,
+            "tools_mode": s.agent.tools_disabled_reason or "active",
+        }
+    return {"sessions": summary}
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     dependencies = {
@@ -610,7 +628,12 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
 
     session.ensure_conversation().end_speech_and_respond()
     transcript_text = str(session.transcriber.last_result.get("text", "")).strip()
-    logger.info("Audio turn processed transcript_chars=%s", len(transcript_text))
+    history_turns = len(session.agent.context_history) // 2
+    prompt_chars_est = len(transcript_text) + sum(len(m.get("content", "")) for m in session.agent.context_history[-20:])
+    logger.info(
+        "Audio turn processed transcript_chars=%s history_turns=%s prompt_chars_est=%s",
+        len(transcript_text), history_turns, prompt_chars_est,
+    )
     await websocket.send_json(
         {
             "type": "transcript",
@@ -648,6 +671,7 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     session = BridgeSession()
+    _debug_sessions[session.session_id] = session
     session.ensure_conversation()
     logger.info("WebSocket session connected session_id=%s", session.session_id)
 
@@ -727,6 +751,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 # Retain multi-turn context
                 if user_text and session.agent.last_response:
                     session.agent.append_turn_to_context(user_text, session.agent.last_response)
+
+                history_turns = len(session.agent.context_history) // 2
+                prompt_chars_est = len(user_text) + sum(len(m.get("content", "")) for m in session.agent.context_history[-20:])
+                logger.info(
+                    "Text turn processed text_chars=%s history_turns=%s prompt_chars_est=%s",
+                    len(user_text), history_turns, prompt_chars_est,
+                )
 
             elif message_type == "tool_context":
                 system_instruction = message.get("system_instruction") or message.get("systemInstruction")
