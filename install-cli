@@ -101,7 +101,7 @@ mkdir -p "$BIN_DIR"
 cat > "$BIN_PATH" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec uv run --with-requirements "$CLI_REQUIREMENTS" "$CLI_MAIN" "\$@"
+exec uv run --python 3.12 --with-requirements "$CLI_REQUIREMENTS" "$CLI_MAIN" "\$@"
 EOF
 
 chmod +x "$BIN_PATH"

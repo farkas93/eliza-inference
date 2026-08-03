@@ -1,5 +1,8 @@
 import pathlib
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 from typing import Dict, List
 from .models import Profile, Service, Stack
 from .runtime_probe import RuntimeProbe
