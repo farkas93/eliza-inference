@@ -64,7 +64,7 @@ def _eliza_small_base_url() -> str:
 
 
 def _eliza_small_model() -> str:
-    return os.environ.get("ELIZA_SMALL_MODEL", "gemma-4-e2b-it-q4-k-m")
+    return os.environ.get("ELIZA_SMALL_MODEL", "gemma-4-e4b-it-q4-k-m")
 
 
 def _voice_system_prompt() -> str:

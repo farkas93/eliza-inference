@@ -12,6 +12,22 @@ WS_URL="${WS_URL:-ws://127.0.0.1:8021/ws}"
 PASS=0
 FAIL=0
 
+if [[ -x "$BASE_VENV/bin/python" ]]; then
+  PYTHON="$BASE_VENV/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON="python3"
+else
+  echo "python3 not available" >&2
+  exit 1
+fi
+
+service_health_url() {
+  local base_url="$1"
+  base_url="${base_url%/}"
+  base_url="${base_url%/v1}"
+  echo "$base_url/health"
+}
+
 pass() { PASS=$((PASS + 1)); echo "  PASS: $*"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $*"; }
 
@@ -23,9 +39,9 @@ echo "--- Upstream health ---"
 
 for svc in stt eliza-small tts; do
   case "$svc" in
-    stt) url="${STT_BASE_URL:-http://127.0.0.1:8011/v1}/health" ;;
-    eliza-small) url="${ELIZA_SMALL_BASE_URL:-http://127.0.0.1:8002/v1}/health" ;;
-    tts) url="${TTS_BASE_URL:-http://127.0.0.1:8012/v1}/health" ;;
+    stt) url="$(service_health_url "${STT_BASE_URL:-http://127.0.0.1:8011/v1}")" ;;
+    eliza-small) url="$(service_health_url "${ELIZA_SMALL_BASE_URL:-http://127.0.0.1:8002/v1}")" ;;
+    tts) url="$(service_health_url "${TTS_BASE_URL:-http://127.0.0.1:8012/v1}")" ;;
   esac
   if curl -fsS "$url" >/dev/null 2>&1; then
     pass "$svc health check"
@@ -40,7 +56,7 @@ BRIDGE_HEALTH="$BRIDGE_URL/health"
 bridge_json=$(curl -fsS "$BRIDGE_HEALTH" 2>/dev/null || true)
 if [[ -n "$bridge_json" ]]; then
   pass "bridge /health responded"
-  echo "$bridge_json" | python3 -m json.tool 2>/dev/null || echo "$bridge_json"
+  echo "$bridge_json" | "$PYTHON" -m json.tool 2>/dev/null || echo "$bridge_json"
 else
   fail "bridge /health — $BRIDGE_HEALTH unreachable"
 fi
@@ -48,12 +64,11 @@ fi
 # --- 3. Full voice turn via WebSocket ---
 echo "--- WebSocket voice turn ---"
 
-if [[ ! -x "$BASE_VENV/bin/python3" ]] && ! command -v python3 >/dev/null 2>&1; then
-  fail "python3 not available — skipping WebSocket test"
+if ! "$PYTHON" -c "import websockets" >/dev/null 2>&1; then
+  fail "python websockets dependency missing for interpreter: $PYTHON"
 else
-  PYTHON="${BASE_VENV/bin/python3:-python3}"
   # Generate a minimal PCM16 audio chunk (1 second of silence at 16kHz)
-  pcm_b64=$(python3 -c "
+  pcm_b64=$("$PYTHON" -c "
 import base64, struct
 # 1 second of 16kHz PCM16 silence (32000 samples)
 pcm = struct.pack('<' + 'h' * 16000, *([0] * 16000))
@@ -61,7 +76,7 @@ print(base64.b64encode(pcm).decode())
 ")
 
   result=$(
-    python3 -c "
+    "$PYTHON" -c "
 import asyncio, json, websockets, base64
 
 async def test():
@@ -122,9 +137,9 @@ fi
 # --- 4. Multi-turn context test ---
 echo "--- Multi-turn context ---"
 
-if command -v python3 >/dev/null 2>&1; then
+if "$PYTHON" -c "import websockets" >/dev/null 2>&1; then
   result=$(
-    python3 -c "
+    "$PYTHON" -c "
 import asyncio, json, websockets
 
 async def test():
