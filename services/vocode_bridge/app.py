@@ -74,6 +74,14 @@ def _voice_system_prompt() -> str:
     )
 
 
+def _context_max_tokens() -> int:
+    return int(os.environ.get("BRIDGE_CONTEXT_MAX_TOKENS", "4096"))
+
+
+def _context_max_turns() -> int:
+    return int(os.environ.get("BRIDGE_CONTEXT_MAX_TURNS", "20"))
+
+
 def _tools_mode() -> str:
     mode = os.environ.get("BRIDGE_TOOLS_MODE", "auto").strip().lower()
     if mode not in {"auto", "on", "off"}:
@@ -231,17 +239,19 @@ def generate_assistant_response(
     system_prompt: str,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: Any | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     llm_base_url = _eliza_small_base_url()
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+    ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_text})
+
     payload = {
         "model": _eliza_small_model(),
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {"role": "user", "content": user_text},
-        ],
+        "messages": messages,
         "temperature": 0.2,
         "max_tokens": 120,
     }
@@ -401,9 +411,17 @@ class BridgeAgent(BaseAgent):
         self.tool_choice: Any | None = None
         self.system_prompt: str = _voice_system_prompt()
         self.tools_disabled_reason: str | None = None
+        self.context_history: list[dict[str, str]] = []
+
+    def append_turn_to_context(self, user_text: str, assistant_text: str) -> None:
+        max_turns = _context_max_turns()
+        self.context_history.append({"role": "user", "content": user_text})
+        self.context_history.append({"role": "assistant", "content": assistant_text})
+        if len(self.context_history) > max_turns * 2:
+            self.context_history = self.context_history[-(max_turns * 2) :]
 
     def respond(self, human_input: str):
-        result = generate_assistant_response(human_input, self.system_prompt, self.tools, self.tool_choice)
+        result = generate_assistant_response(human_input, self.system_prompt, self.tools, self.tool_choice, self.context_history)
         response = str(result.get("assistant_text") or "").strip()
         self.last_response = response
         raw_tool_calls = result.get("tool_calls")
@@ -542,6 +560,16 @@ def health() -> dict[str, Any]:
             "silence_ms": _vad_silence_ms(),
             "min_speech_ms": _vad_min_speech_ms(),
         },
+        "audio": {
+            "input_format": "PCM16 signed mono",
+            "input_rate": "parsed from mime_type (default 16000)",
+            "output_format": "WAV",
+            "output_mime": "audio/wav",
+        },
+        "context": {
+            "max_tokens": _context_max_tokens(),
+            "max_turns": _context_max_turns(),
+        },
         "dependencies": dependencies,
     }
 
@@ -609,6 +637,10 @@ async def _process_audio_turn(websocket: WebSocket, session: BridgeSession) -> N
         session.agent.last_tool_calls,
         session.agent.tools_disabled_reason,
     )
+
+    # Retain multi-turn context
+    if transcript_text and session.agent.last_response:
+        session.agent.append_turn_to_context(transcript_text, session.agent.last_response)
     session.reset_audio()
 
 
@@ -692,6 +724,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     session.agent.tools_disabled_reason,
                 )
 
+                # Retain multi-turn context
+                if user_text and session.agent.last_response:
+                    session.agent.append_turn_to_context(user_text, session.agent.last_response)
+
             elif message_type == "tool_context":
                 system_instruction = message.get("system_instruction") or message.get("systemInstruction")
                 session.set_tool_context(message.get("tools"), message.get("tool_choice"), system_instruction)
@@ -722,6 +758,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     [],
                     session.agent.tools_disabled_reason,
                 )
+
+                # Retain multi-turn context (tool result replaces the original user turn)
+                if session.last_user_text and session.agent.last_response:
+                    session.agent.append_turn_to_context(session.last_user_text, session.agent.last_response)
 
             elif message_type == "synthesize":
                 text = str(message.get("text") or "")

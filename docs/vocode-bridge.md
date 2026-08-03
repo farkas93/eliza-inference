@@ -138,6 +138,41 @@ Contract notes:
 - Clients should be ready for `assistant_interrupted` when user speech arrives mid-response.
 - `turn_complete` is emitted when the bridge decides the turn is finished.
 
+### Audio format
+
+| Direction | Format | Details |
+|---|---|---|
+| Client → Bridge (`audio_input`) | PCM16 signed 16-bit mono | Base64, sample rate from `mime_type` (e.g. `audio/pcm;rate=16000`), default 16000 Hz |
+| Bridge → Client (`assistant_audio`) | WAV | Full WAV file, base64, MIME `audio/wav` |
+
+The `/health` endpoint reports the active audio contract in the `audio` field.
+
+### Multi-turn context
+
+The bridge now retains conversation history across turns. Each turn appends the user transcript/input and the assistant response to a rolling buffer. On each LLM call, prior context is included in the messages array.
+
+Configuration via env vars:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BRIDGE_CONTEXT_MAX_TOKENS` | `4096` | Estimated token budget for context history |
+| `BRIDGE_CONTEXT_MAX_TURNS` | `20` | Max user+assistant pairs to retain |
+
+The `/health` endpoint reports active context settings in the `context` field.
+
+### VAD endpointing
+
+Bridge-side VAD is the canonical endpointing authority. Parameters:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BRIDGE_VAD_ENABLED` | `true` | Master toggle |
+| `BRIDGE_VAD_RMS_THRESHOLD` | `450` | RMS energy threshold for speech detection |
+| `BRIDGE_VAD_SILENCE_MS` | `700` | Milliseconds of trailing silence to finalize a turn |
+| `BRIDGE_VAD_MIN_SPEECH_MS` | `300` | Minimum speech duration before silence triggers |
+
+Server-side VAD (`LOCAL_VOCODE_VAD_*`) should be disabled when bridge VAD is active to avoid race conditions.
+
 ## Split-Host Checklist
 
 For the backend on `10.42.47.7` and bridge on `10.42.47.8`, configure with:
