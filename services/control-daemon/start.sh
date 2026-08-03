@@ -12,7 +12,10 @@ export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 echo "Starting Eliza Control Daemon on ${HOST}:${PORT}"
 
 if command -v uv >/dev/null 2>&1; then
-  exec uv run --project "$ROOT_DIR" python -m uvicorn services.control_daemon.app:app --host "$HOST" --port "$PORT"
+  exec uv run \
+    --project "$ROOT_DIR" \
+    --with-requirements "$ROOT_DIR/services/control_daemon/requirements.txt" \
+    python -m uvicorn services.control_daemon.app:app --host "$HOST" --port "$PORT"
 elif [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
   exec "$ROOT_DIR/.venv/bin/python" -m uvicorn services.control_daemon.app:app --host "$HOST" --port "$PORT"
 elif [[ -x "$ROOT_DIR/.venvs/base/bin/python" ]]; then
