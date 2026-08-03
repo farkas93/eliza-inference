@@ -19,6 +19,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$ROOT_DIR
+Environment="PATH=$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.astral/uv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=$ROOT_DIR/services/control-daemon/start.sh
 Restart=on-failure
 RestartSec=5
