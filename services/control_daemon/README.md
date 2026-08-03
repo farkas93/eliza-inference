@@ -15,18 +15,18 @@ When running heavy PySpark / GPU training jobs (e.g., via `nlp-lab` or JupyterHu
 - `POST /service/{name}/start` - Starts a specific service (`./scripts/start <name>`)
 - `POST /service/{name}/stop` - Stops a specific service (`./scripts/stop <name>`)
 
+## Quick Installation & Systemd Setup
+
+Run the installation script inside `eliza-inference`:
+
+```bash
+./scripts/installation-suite/install-control-daemon
+```
+
+This automatically generates the systemd service file tailored to your local path (`~/eliza-inference`), exports `PYTHONPATH`, and starts the systemd service.
+
 ## Running manually
 
 ```bash
-uvicorn services.control_daemon.app:app --host 0.0.0.0 --port 8030
-```
-
-## Systemd Service
-
-Deploy using systemd:
-
-```bash
-cp systemd/eliza-control-daemon.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now eliza-control-daemon.service
+./services/control-daemon/start.sh
 ```

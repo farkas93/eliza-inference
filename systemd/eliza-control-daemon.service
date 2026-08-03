@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/private/eliza-inference
-ExecStart=%h/private/eliza-inference/.venv/bin/python -m uvicorn services.control_daemon.app:app --host 0.0.0.0 --port 8030
+WorkingDirectory=%h/eliza-inference
+ExecStart=%h/eliza-inference/services/control-daemon/start.sh
 Restart=on-failure
 RestartSec=5
 

@@ -173,6 +173,25 @@ Bridge-side VAD is the canonical endpointing authority. Parameters:
 
 Server-side VAD (`LOCAL_VOCODE_VAD_*`) should be disabled when bridge VAD is active to avoid race conditions.
 
+### Tool-call policy
+
+Tool calling uses a **client-execute** model:
+
+1. Client sends tool definitions via `start` or `tool_context`
+2. Bridge sends tools to the LLM; LLM may respond with `tool_calls`
+3. Bridge emits `assistant_tool_calls` + `assistant_waiting_tools` — no audio is synthesized
+4. Client executes the tool externally and sends results via `tool_result`
+5. Bridge merges original request + tool results into a new LLM call, synthesizes audio, and sends the final response
+
+Configuration via env vars:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BRIDGE_TOOLS_MODE` | `auto` | `auto`/`on`/`off`. When `off`, tools are never sent to the LLM |
+| `BRIDGE_TOOL_CALL_FALLBACK_TEXT` | `"I need to run a tool before I can answer."` | Placeholder text when LLM returns tool calls but no text |
+
+No server-side tool execution is implemented. The bridge only orchestrates the client round-trip.
+
 ## Split-Host Checklist
 
 For the backend on `10.42.47.7` and bridge on `10.42.47.8`, configure with:

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+echo "=== Installing Eliza Control Daemon systemd service ==="
+
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
+
+TARGET_SERVICE="$SYSTEMD_USER_DIR/eliza-control-daemon.service"
+
+cat <<EOF > "$TARGET_SERVICE"
+[Unit]
+Description=Eliza Inference REST Control Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT_DIR
+ExecStart=$ROOT_DIR/services/control-daemon/start.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload
+    systemctl --user enable --now eliza-control-daemon.service
+    echo "Eliza Control Daemon systemd service installed and started at $TARGET_SERVICE"
+else
+    echo "Created systemd unit file at $TARGET_SERVICE."
+    echo "Note: systemctl command not available in current shell environment."
+fi
+
+echo "To test the endpoint manually: $ROOT_DIR/services/control-daemon/start.sh"
