@@ -69,8 +69,18 @@ wait_for_health() {
 
 echo "Starting Eliza stack from $CONFIG_PATH"
 
+# Start eliza-medium first so it can reserve memory before other services.
 while IFS=$'\t' read -r service profile health_url; do
   [[ -z "$service" ]] && continue
+  [[ "$service" != "eliza-medium" ]] && continue
+  echo "Starting $service ($profile)"
+  "$ROOT_DIR/scripts/start" "$service" --profile "$profile"
+  wait_for_health "$health_url" "$service"
+done < <(stack_config services --config "$CONFIG_PATH")
+
+while IFS=$'\t' read -r service profile health_url; do
+  [[ -z "$service" ]] && continue
+  [[ "$service" == "eliza-medium" ]] && continue
   echo "Starting $service ($profile)"
   "$ROOT_DIR/scripts/start" "$service" --profile "$profile"
   wait_for_health "$health_url" "$service"
