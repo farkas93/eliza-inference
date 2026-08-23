@@ -107,9 +107,14 @@ class Executor:
         health_url: str,
         timeout_seconds: int,
         progress_callback: Callable[[str], None] | None,
+        service_name: str | None = None,
     ) -> None:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
+            if service_name and not self._service_session_running(service_name):
+                log_path = self.root_dir / "logs" / f"{service_name}.log"
+                raise ExecutionError(f"Service exited before becoming healthy. Check logs: {log_path}")
+
             request = Request(health_url, method="GET")
             try:
                 with urlopen(request, timeout=1.5) as response:
@@ -123,6 +128,37 @@ class Executor:
             time.sleep(1.0)
 
         raise ExecutionError(f"Service did not become healthy within {timeout_seconds}s: {health_url}")
+
+    @staticmethod
+    def _tmux_session_name(service_name: str) -> str:
+        return service_name if service_name.startswith("eliza-") else f"eliza-{service_name}"
+
+    def _service_session_running(self, service_name: str) -> bool:
+        if shutil.which("tmux") is None:
+            return False
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", self._tmux_session_name(service_name)],
+            cwd=self.root_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def _cleanup_failed_service_start(
+        self,
+        service_name: str,
+        profile_id: str,
+        progress_callback: Callable[[str], None] | None,
+    ) -> None:
+        self._emit_progress(progress_callback, "Cleaning up failed startup")
+        try:
+            self._run_command(
+                ["./scripts/stop", service_name, "--profile", profile_id],
+                progress_callback=progress_callback,
+            )
+        except ExecutionError as exc:
+            logger.warning("Failed to clean up %s after startup error: %s", service_name, exc)
 
     def _profile_path(self, profile_id: str) -> pathlib.Path:
         profile_path = self.root_dir / "configs" / "profiles" / f"{profile_id}.env"
@@ -419,7 +455,7 @@ class Executor:
         health_url: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         wait_for_health: bool = True,
-        ready_timeout_seconds: int = 120,
+        ready_timeout_seconds: int = 900,
     ) -> str:
         """Starts a service. Returns the log file path."""
         self.ensure_service_ready(service_name, profile_id, progress_callback=progress_callback)
@@ -428,7 +464,16 @@ class Executor:
         cmd = ["./scripts/start", service_name, "--profile", profile_id]
         self._run_command(cmd, progress_callback=progress_callback)
         if wait_for_health and health_url:
-            self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
+            try:
+                self._wait_for_health(
+                    health_url,
+                    ready_timeout_seconds,
+                    progress_callback,
+                    service_name=service_name,
+                )
+            except Exception:
+                self._cleanup_failed_service_start(service_name, profile_id, progress_callback)
+                raise
         
         # We need to figure out where the log goes. 
         # From common.sh: LOG_FILE="$LOG_DIR/$SERVICE.log"
@@ -450,7 +495,7 @@ class Executor:
         health_url: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         wait_for_health: bool = True,
-        ready_timeout_seconds: int = 120,
+        ready_timeout_seconds: int = 900,
     ) -> str:
         """Restarts a service with a potentially new profile."""
         self.ensure_service_ready(service_name, profile_id, progress_callback=progress_callback)
@@ -459,7 +504,16 @@ class Executor:
         self._run_command(cmd, progress_callback=progress_callback)
         self._emit_progress(progress_callback, "Launching tmux session")
         if wait_for_health and health_url:
-            self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
+            try:
+                self._wait_for_health(
+                    health_url,
+                    ready_timeout_seconds,
+                    progress_callback,
+                    service_name=service_name,
+                )
+            except Exception:
+                self._cleanup_failed_service_start(service_name, profile_id, progress_callback)
+                raise
         return str(self.root_dir / "logs" / f"{service_name}.log")
 
     def download_model(self, service_name: str, profile_id: str, progress_callback: Callable[[str], None] | None = None) -> str:

@@ -113,16 +113,16 @@ print(f"\nsglang CLI on PATH: {sglang_cli or 'not-found-in-shell-path'}")
 
 probe_commands: list[list[str]] = []
 
+# Prefer the autoregressive module entrypoint used by the service launcher.
+# The generic `sglang serve` command can import optional diffusion dependencies.
+probe_commands.append([sys.executable, "-m", "sglang.launch_server", "--help"])
+
 venv_cli = str(Path(sys.executable).with_name("sglang"))
 if Path(venv_cli).exists():
-    probe_commands.append([venv_cli, "--help"])
+    probe_commands.append([venv_cli, "serve", "--help"])
 
 if sglang_cli:
-    probe_commands.append([sglang_cli, "--help"])
-
-# Keep module probes as fallbacks only; entrypoints differ across releases.
-probe_commands.append([sys.executable, "-m", "sglang", "--help"])
-probe_commands.append([sys.executable, "-m", "sglang.launch_server", "--help"])
+    probe_commands.append([sglang_cli, "serve", "--help"])
 
 probe_success = False
 for command in probe_commands:
@@ -142,7 +142,7 @@ for command in probe_commands:
         print(f"probe {' '.join(command)} failed: {exc}")
 
 if not probe_success:
-    raise SystemExit("SGLang CLI/module invocation failed for all known entrypoints")
+    raise SystemExit("No usable SGLang autoregressive server entrypoint was found")
 PY
 
 cat <<'EOF'

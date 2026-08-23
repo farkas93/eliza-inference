@@ -3,23 +3,28 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SGLANG_VENV="${SGLANG_VENV:-$ROOT_DIR/.venvs/sglang}"
+SGLANG_PYTHON="${SGLANG_PYTHON:-$SGLANG_VENV/bin/python}"
 SGLANG_BIN="${SGLANG_BIN:-$SGLANG_VENV/bin/sglang}"
 export PATH="$SGLANG_VENV/bin:$PATH"
 
 sglang_cmd=()
-if [[ -x "$SGLANG_BIN" ]]; then
+if [[ -x "$SGLANG_PYTHON" ]] && "$SGLANG_PYTHON" -c 'import sglang.launch_server' >/dev/null 2>&1; then
+  sglang_cmd=("$SGLANG_PYTHON" -m sglang.launch_server)
+elif [[ -x "$SGLANG_BIN" ]]; then
   sglang_cmd=("$SGLANG_BIN")
+  sglang_cmd+=(serve)
 elif command -v sglang >/dev/null 2>&1; then
   sglang_cmd=("$(command -v sglang)")
+  sglang_cmd+=(serve)
 else
-  echo "SGLang CLI not found. Run ./scripts/setup sglang or set SGLANG_BIN in .env." >&2
+  echo "SGLang runtime not found. Run ./scripts/setup sglang or set SGLANG_PYTHON/SGLANG_BIN in .env." >&2
   exit 1
 fi
 
 model_path="${MODEL_PATH:-${MODEL_DIR:-${MODEL_ID:?MODEL_ID is required}}}"
 
 cmd=(
-  "${sglang_cmd[@]}" serve
+  "${sglang_cmd[@]}"
   --model-path "$model_path"
   --host "${HOST:-0.0.0.0}"
   --port "${PORT:-8001}"

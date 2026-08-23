@@ -42,7 +42,7 @@ class ElizaTUI(App):
     LOG_HEIGHT_DEFAULT = 12
     LOG_HEIGHT_MIN = 4
     LOG_HEIGHT_STEP = 1
-    READY_TIMEOUT_SECONDS = 120
+    READY_TIMEOUT_SECONDS = 900
 
     SPINNER_FRAMES = ("|", "/", "-", "\\")
 

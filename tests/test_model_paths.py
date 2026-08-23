@@ -80,7 +80,7 @@ class ModelPathTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "SGLANG_BIN": str(fake_sglang),
+                    "SGLANG_PYTHON": str(fake_sglang),
                     "SGLANG_ARGS_FILE": str(args_path),
                     "MODEL_ID": "Qwen/Qwen3.8-27B-FP8",
                     "MODEL_DIR": str(local_model),
@@ -99,6 +99,7 @@ class ModelPathTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             arguments = args_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(arguments[:2], ["-m", "sglang.launch_server"])
             model_path_index = arguments.index("--model-path") + 1
             self.assertEqual(arguments[model_path_index], str(local_model))
 
