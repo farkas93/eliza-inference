@@ -15,6 +15,24 @@ When running heavy PySpark / GPU training jobs (e.g., via `nlp-lab` or JupyterHu
 - `POST /service/{name}/start` - Starts a specific service (`./scripts/start <name>`)
 - `POST /service/{name}/stop` - Stops a specific service (`./scripts/stop <name>`)
 
+Mutating operations are serialized. If another start/stop operation is active, the daemon returns HTTP `409` instead of running both commands concurrently.
+
+## Optional Authentication
+
+Authentication is disabled by default for trusted-LAN use. To protect mutating `POST` endpoints, set this in `.env` and restart the daemon:
+
+```bash
+CONTROL_DAEMON_TOKEN="replace-with-a-random-token"
+```
+
+Clients must then send:
+
+```text
+Authorization: Bearer replace-with-a-random-token
+```
+
+`GET /health` and `GET /status` remain unauthenticated. Command timeouts are configurable with `CONTROL_START_TIMEOUT_SECONDS`, `CONTROL_STOP_TIMEOUT_SECONDS`, and `CONTROL_STATUS_TIMEOUT_SECONDS`.
+
 ## Quick Installation & Systemd Setup
 
 Run the installation script inside `eliza-inference`:
