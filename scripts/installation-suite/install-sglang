@@ -12,6 +12,7 @@ SGLANG_PACKAGE="sglang"
 SGLANG_INSTALL_MODE="${SGLANG_INSTALL_MODE:-auto}"
 SGLANG_SOURCE_DIR="${SGLANG_SOURCE_DIR:-$HOME/src/sglang-eliza}"
 SGLANG_SOURCE_REF="${SGLANG_SOURCE_REF:-1cf2b8c54d81802abc15dcf23a29b9cc687bc01e}"
+SGLANG_BUILD_RUST_EXTS="${SGLANG_BUILD_RUST_EXTS:-none}"
 UV_TORCH_BACKEND="auto"
 EXTRA_UV_PIP_ARGS=()
 
@@ -68,6 +69,8 @@ Options:
                             Default: $SGLANG_SOURCE_DIR
   --source-ref REF          Tested SGLang revision for DGX Spark source mode.
                             Default: $SGLANG_SOURCE_REF
+  SGLANG_BUILD_RUST_EXTS    Rust extension selection for source builds.
+                            Default: none (not required for model serving)
   --torch-backend BACKEND   uv torch backend. Default: auto
   --index-url URL           Pass an index URL to uv pip install.
   --extra-index-url URL     Pass an extra index URL to uv pip install.
@@ -126,7 +129,7 @@ if [[ "$INSTALL_SGLANG" == "true" ]]; then
     fi
     git -C "$SGLANG_SOURCE_DIR" checkout --detach "$SGLANG_SOURCE_REF"
     echo "Installing tested DGX Spark SGLang revision into $SGLANG_VENV: $SGLANG_SOURCE_REF"
-    uv pip install \
+    SGLANG_BUILD_RUST_EXTS="$SGLANG_BUILD_RUST_EXTS" uv pip install \
       --python "$SGLANG_VENV/bin/python" \
       --prerelease=allow \
       -U \
