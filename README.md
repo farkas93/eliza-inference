@@ -69,11 +69,11 @@ Start `eliza-medium` separately:
 Compare `eliza-medium` runtimes (llama.cpp vs SGLang):
 
 ```bash
-./scripts/start eliza-medium --profile medium/qwen3.6-27b-fp8-sglang-32k
-./scripts/smoke-test eliza-medium --profile medium/qwen3.6-27b-fp8-sglang-32k
+./scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 
-./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
-./scripts/smoke-test eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+./scripts/start eliza-medium --profile medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k
 ```
 
 ## Profiles

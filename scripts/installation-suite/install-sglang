@@ -150,6 +150,6 @@ cat <<'EOF'
 SGLang runtime is ready.
 
 Recommended medium runtime comparison profile:
-  ./scripts/start eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
-  ./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-fp8-sglang-32k
+  ./scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
+  ./scripts/smoke-test eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 EOF
