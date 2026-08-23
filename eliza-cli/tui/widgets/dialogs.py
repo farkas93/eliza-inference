@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import List
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -7,14 +7,19 @@ from textual.widgets import Button, Label, ListItem, ListView
 
 from core.models import Profile
 
-class ProfileSelectDialog(ModalScreen):
+class ProfileSelectDialog(ModalScreen[Profile | None]):
     """A modal dialog for selecting a profile."""
 
-    def __init__(self, service_name: str, profiles: List[Profile], on_select: Callable[[Profile], None]):
+    def __init__(
+        self,
+        service_name: str,
+        profiles: List[Profile],
+        profile_labels: dict[str, str] | None = None,
+    ):
         super().__init__()
         self.service_name = service_name
         self.profiles = profiles
-        self.on_select = on_select
+        self.profile_labels = profile_labels or {}
         self._profile_by_item_id: dict[str, Profile] = {}
         self._closed = False
 
@@ -25,7 +30,8 @@ class ProfileSelectDialog(ModalScreen):
                 for index, profile in enumerate(self.profiles):
                     item_id = f"profile_{index}"
                     self._profile_by_item_id[item_id] = profile
-                    yield ListItem(Label(profile.name), id=item_id)
+                    label = self.profile_labels.get(profile.name, profile.name)
+                    yield ListItem(Label(label), id=item_id)
             yield Button("Cancel", variant="error", id="cancel_btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -33,7 +39,7 @@ class ProfileSelectDialog(ModalScreen):
             return
         if event.button.id == "cancel_btn":
             self._closed = True
-            self.dismiss()
+            self.dismiss(None)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if self._closed:
@@ -46,8 +52,7 @@ class ProfileSelectDialog(ModalScreen):
             return
 
         self._closed = True
-        self.on_select(selected_profile)
-        self.dismiss()
+        self.dismiss(selected_profile)
 
 
 class ConfirmDialog(ModalScreen[bool]):

@@ -63,7 +63,7 @@ actual_model = "qwen3-coder-next"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "agentic coding (80B MoE, 3B active, sglang)"
 
-[models.qwen3.6-27b-nvfp4-vllm]
+[models."qwen3.6-27b-nvfp4-vllm"]
 service = "eliza-medium"
 profile = "medium/qwen3.6-27b-nvfp4-vllm-256k"
 public_name = "qwen3.6-27b-nvfp4"
@@ -71,7 +71,7 @@ actual_model = "unsloth/Qwen3.6-27B-NVFP4"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "dense 27B coding, NVFP4 quant (vLLM)"
 
-[models.qwen3.6-27b-nvfp4-sglang]
+[models."qwen3.6-27b-nvfp4-sglang"]
 service = "eliza-medium"
 profile = "medium/qwen3.6-27b-nvfp4-sglang-256k"
 public_name = "qwen3.6-27b-nvfp4"
@@ -79,7 +79,7 @@ actual_model = "unsloth/Qwen3.6-27B-NVFP4"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "dense 27B coding, NVFP4 quant (sglang)"
 
-[models.qwen3.8-27b-fp8-sglang]
+[models."qwen3.8-27b-fp8-sglang"]
 service = "eliza-medium"
 profile = "medium/qwen3.8-27b-fp8-sglang-256k"
 public_name = "qwen3.8-27b-fp8"
@@ -87,7 +87,7 @@ actual_model = "Qwen/Qwen3.8-27B-FP8"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "dense 27B coding, FP8 quant (sglang)"
 
-[models.qwen3.8-27b-ud-q4-k-xl-llamacpp]
+[models."qwen3.8-27b-ud-q4-k-xl-llamacpp"]
 service = "eliza-medium"
 profile = "medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k"
 public_name = "qwen3.8-27b-ud-q4-k-xl"
@@ -95,7 +95,7 @@ actual_model = "qwen3.8-27b-ud-q4-k-xl"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "dense 27B coding, UD Q4_K_XL quant (llama.cpp)"
 
-[models.qwen3.5-122b-a10b-nvfp4-vllm]
+[models."qwen3.5-122b-a10b-nvfp4-vllm"]
 service = "eliza-medium"
 profile = "medium/qwen3.5-122b-a10b-nvfp4-vllm-256k"
 public_name = "qwen3.5-122b-a10b-nvfp4"
@@ -103,7 +103,7 @@ actual_model = "nvidia/Qwen3.5-122B-A10B-NVFP4"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "large 122B MoE coding, NVFP4 quant (vLLM)"
 
-[models.qwen3.5-122b-a10b-nvfp4-sglang]
+[models."qwen3.5-122b-a10b-nvfp4-sglang"]
 service = "eliza-medium"
 profile = "medium/qwen3.5-122b-a10b-nvfp4-sglang-256k"
 public_name = "qwen3.5-122b-a10b-nvfp4"
@@ -111,7 +111,7 @@ actual_model = "nvidia/Qwen3.5-122B-A10B-NVFP4"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "large 122B MoE coding, NVFP4 quant (sglang — needs testing)"
 
-[models.qwen3.5-122b-a10b-mxfp4-llamacpp]
+[models."qwen3.5-122b-a10b-mxfp4-llamacpp"]
 service = "eliza-medium"
 profile = "medium/qwen3.5-122b-a10b-mxfp4-moe-llamacpp-256k"
 public_name = "qwen3.5-122b-a10b-mxfp4"
@@ -119,7 +119,7 @@ actual_model = "qwen3.5-122b-a10b-mxfp4-moe"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "large 122B MoE coding, MXFP4_MOE quant (llama.cpp)"
 
-[models.qwen3.5-122b-a10b-mxfp4-sglang]
+[models."qwen3.5-122b-a10b-mxfp4-sglang"]
 service = "eliza-medium"
 profile = "medium/qwen3.5-122b-a10b-mxfp4-moe-sglang-256k"
 public_name = "qwen3.5-122b-a10b-mxfp4"
@@ -127,7 +127,7 @@ actual_model = "unsloth/Qwen3.5-122B-A10B-GGUF"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "large 122B MoE coding, MXFP4 quant (sglang — loads unsloth repo)"
 
-[models.qwen3.5-122b-a10b-nvfp4-txn545-sglang]
+[models."qwen3.5-122b-a10b-nvfp4-txn545-sglang"]
 service = "eliza-medium"
 profile = "medium/qwen3.5-122b-a10b-nvfp4-txn545-sglang-256k"
 public_name = "qwen3.5-122b-a10b-nvfp4"

@@ -24,7 +24,7 @@ class Executor:
         self._prerequisites_ready = False
 
     def _run_command(self, command_args: list[str], cwd: pathlib.Path = None, progress_callback: Callable[[str], None] | None = None) -> subprocess.CompletedProcess:
-        """Run a command. When progress_callback is set, streams stderr line by line."""
+        """Run a command. When progress_callback is set, streams stdout/stderr lines."""
         target_cwd = cwd or self.root_dir
         if progress_callback is None:
             try:
@@ -54,21 +54,31 @@ class Executor:
 
             stdout_lines: list[str] = []
             stderr_lines: list[str] = []
+            stop_heartbeat = threading.Event()
 
-            def read_stream(stream, lines, is_stderr):
+            def read_stream(stream, lines):
                 for line in stream:
                     lines.append(line)
-                    if is_stderr:
-                        stripped = line.rstrip('\n')
-                        if stripped:
-                            progress_callback(stripped)
+                    stripped = line.rstrip('\n')
+                    if stripped:
+                        progress_callback(stripped)
 
-            t_out = threading.Thread(target=read_stream, args=(proc.stdout, stdout_lines, False), daemon=True)
-            t_err = threading.Thread(target=read_stream, args=(proc.stderr, stderr_lines, True), daemon=True)
+            def emit_heartbeat() -> None:
+                start = time.monotonic()
+                while not stop_heartbeat.wait(8.0):
+                    elapsed = int(time.monotonic() - start)
+                    progress_callback(f"Still running... ({elapsed}s)")
+
+            t_out = threading.Thread(target=read_stream, args=(proc.stdout, stdout_lines), daemon=True)
+            t_err = threading.Thread(target=read_stream, args=(proc.stderr, stderr_lines), daemon=True)
+            t_heartbeat = threading.Thread(target=emit_heartbeat, daemon=True)
             t_out.start()
             t_err.start()
+            t_heartbeat.start()
             t_out.join()
             t_err.join()
+            stop_heartbeat.set()
+            t_heartbeat.join()
 
             proc.wait()
 
@@ -315,7 +325,7 @@ class Executor:
             raise ExecutionError(f"Unsupported backend: {backend_name}")
 
         self._emit_progress(progress_callback, "Running setup")
-        self._run_command(command)
+        self._run_command(command, progress_callback=progress_callback)
         self._emit_progress(progress_callback, "Ready")
 
     def update_backend(
@@ -341,7 +351,7 @@ class Executor:
             raise ExecutionError(f"Unsupported backend: {backend_name}")
 
         self._emit_progress(progress_callback, "Removing installed runtime")
-        self._run_command(command)
+        self._run_command(command, progress_callback=progress_callback)
         self._emit_progress(progress_callback, "Removed")
 
     def _setup_commands_for(self, service_name: str, profile_id: str) -> List[list[str]]:
@@ -395,7 +405,7 @@ class Executor:
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "vocode"]:
                 self._emit_progress(progress_callback, "Ensuring vocode bridge runtime")
 
-            self._run_command(command)
+            self._run_command(command, progress_callback=progress_callback)
             if command[:2] == ["./scripts/setup", "prerequisites"]:
                 self._prerequisites_ready = True
 
@@ -416,7 +426,7 @@ class Executor:
         # Based on README: ./scripts/start <service> --profile <profile>
         self._emit_progress(progress_callback, "Launching tmux session")
         cmd = ["./scripts/start", service_name, "--profile", profile_id]
-        self._run_command(cmd)
+        self._run_command(cmd, progress_callback=progress_callback)
         if wait_for_health and health_url:
             self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)
         
@@ -446,7 +456,7 @@ class Executor:
         self.ensure_service_ready(service_name, profile_id, progress_callback=progress_callback)
         self._emit_progress(progress_callback, "Stopping old session")
         cmd = ["./scripts/restart", service_name, "--profile", profile_id]
-        self._run_command(cmd)
+        self._run_command(cmd, progress_callback=progress_callback)
         self._emit_progress(progress_callback, "Launching tmux session")
         if wait_for_health and health_url:
             self._wait_for_health(health_url, ready_timeout_seconds, progress_callback)

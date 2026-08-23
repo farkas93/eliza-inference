@@ -86,17 +86,13 @@ profile_model_file() {
   return 1
 }
 
-declare -A SERVICE_BASE_URL
-declare -A SERVICE_MODEL_PROFILE
-declare -A SERVICE_MODEL_ACTUAL
+declare -A SERVICE_PROFILE_BASE_URL
 declare -A SERVICE_RUNTIME_PROFILE
 while IFS=$'\t' read -r _model_name model_service model_profile model_actual model_base_url; do
   [[ -z "$model_service" ]] && continue
-  if [[ -z "${SERVICE_BASE_URL[$model_service]:-}" && -n "$model_base_url" ]]; then
-    SERVICE_BASE_URL["$model_service"]="$model_base_url"
+  if [[ -n "$model_profile" && -n "$model_base_url" ]]; then
+    SERVICE_PROFILE_BASE_URL["$model_service|$model_profile"]="$model_base_url"
   fi
-  SERVICE_MODEL_PROFILE["$model_service"]="$model_profile"
-  SERVICE_MODEL_ACTUAL["$model_service"]="$model_actual"
 done < <(stack_config models --config "$CONFIG_PATH")
 
 while IFS=$'\t' read -r runtime_service runtime_profile; do
@@ -135,9 +131,9 @@ while IFS=$'\t' read -r service profile health_url; do
   fi
 
   live_model="-"
-  config_profile="${SERVICE_MODEL_PROFILE[$service]:-$profile}"
+  config_profile="$profile"
   live_profile="${SERVICE_RUNTIME_PROFILE[$service]:--}"
-  base_url="${SERVICE_BASE_URL[$service]:-}"
+  base_url="${SERVICE_PROFILE_BASE_URL[$service|$config_profile]:-}"
   if [[ "$health" == "ok" && -n "$base_url" ]]; then
     models_url="${base_url%/}/models"
     live_model="$(live_model_from_url "$models_url" || true)"

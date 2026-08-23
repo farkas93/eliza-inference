@@ -525,6 +525,7 @@ class ElizaTUI(App):
             elif event_type == "success":
                 log_path = payload.get("log_path", "")
                 selected_profile: Profile | None = None
+                pending_download: tuple[str, str, int] | None = None
                 if kind == "backend":
                     self.refresh_backends(force=True)
                     if action == "install":
@@ -535,16 +536,17 @@ class ElizaTUI(App):
                         self.notify(f"Uninstalled backend {service_name}", severity="information")
                     self._update_backend_summary(service_name)
                 elif kind == "model_download":
+                    self._set_activity(f"{service_name} download: verifying artifacts", busy=True)
                     self.refresh_model_inventory()
                     state = self.profile_states.get(profile_name)
-                    if state is None or not state.ready:
+                    if not self._profile_ready_now(profile_name):
                         self.notify(
                             f"Artifacts still missing after download for {profile_name}",
                             severity="error",
                         )
                     else:
                         before_size = int(payload.get("before_size_bytes", "0") or "0")
-                        after_size = self._paths_size(state.expected_paths)
+                        after_size = self._paths_size(state.expected_paths) if state is not None else before_size
                         delta = max(after_size - before_size, 0)
                         self.notify(
                             f"Download complete for {profile_name}: +{self._human_size(delta)} (total {self._human_size(after_size)})",
@@ -564,8 +566,9 @@ class ElizaTUI(App):
                             pid = svc.profile_id
                             state = self.profile_states.get(pid)
                             if state is not None and not state.ready:
+                                self.notify(f"Downloading missing artifacts for {pid}", severity="information")
                                 before_size = self._paths_size(state.expected_paths)
-                                self._launch_model_download_operation(service_name, pid, before_size)
+                                pending_download = (service_name, pid, before_size)
                     elif action == "start":
                         self.notify(f"Started {service_name}", severity="information")
                     elif action == "restart":
@@ -574,7 +577,10 @@ class ElizaTUI(App):
                 self._operation_service_name = None
                 self._operation_action = None
                 self._operation_thread = None
-                if selected_profile is not None:
+                if pending_download is not None:
+                    download_service, download_profile, before_size = pending_download
+                    self._launch_model_download_operation(download_service, download_profile, before_size)
+                elif selected_profile is not None:
                     self._apply_profile_selection(service_name, selected_profile)
             elif event_type == "error":
                 message = payload.get("message", "unknown error")
@@ -660,6 +666,25 @@ class ElizaTUI(App):
             else:
                 markers[profile_name] = "[bold red]MISS[/bold red]"
         return markers
+
+    def _profile_ready_now(self, profile_name: str) -> bool:
+        state = self.profile_states.get(profile_name)
+        if state is None or not state.expected_paths:
+            return False
+        return all(pathlib.Path(path_text).exists() for path_text in state.expected_paths)
+
+    def _profile_selection_label(self, profile: Profile) -> str:
+        state = self.profile_states.get(profile.name)
+        status = "[bold red]MISS[/bold red]"
+        estimate = ""
+        if state is not None:
+            if state.deployed:
+                status = "[bold green]LIVE[/bold green]"
+            elif state.ready:
+                status = "[bold yellow]RDY[/bold yellow]"
+            if not state.ready and not state.deployed and state.estimated_download_size_bytes is not None:
+                estimate = f", ~{self._human_size(state.estimated_download_size_bytes)}"
+        return f"{status} {profile.name} ({profile.backend}{estimate})"
 
     @staticmethod
     def _profile_snapshot_from_states(states: dict[str, ProfileState]) -> tuple[tuple[str, bool, bool], ...]:
@@ -1196,6 +1221,10 @@ class ElizaTUI(App):
         if self._active_tab() != "services_tab":
             return
 
+        if self._service_operation_active():
+            self.notify(f"Another operation is still running: {self._activity_message}", severity="warning")
+            return
+
         service_name = self.query_one("#service_table", ServiceTable).get_selected_service_name()
         if not service_name:
             self.notify("No service selected!", severity="error")
@@ -1212,13 +1241,18 @@ class ElizaTUI(App):
         dialog = ProfileSelectDialog(
             service_name,
             profiles_for_service,
-            lambda profile: self._prepare_profile_selection(service_name, profile),
+            profile_labels={profile.name: self._profile_selection_label(profile) for profile in profiles_for_service},
         )
-        self.push_screen(dialog)
+        self.push_screen(
+            dialog,
+            callback=lambda profile: (
+                self._prepare_profile_selection(service_name, profile) if profile is not None else None
+            ),
+        )
 
     def _prepare_profile_selection(self, service_name: str, selected_profile: Profile) -> None:
         state = self.profile_states.get(selected_profile.name)
-        if state is None or state.ready:
+        if state is None or state.ready or self._profile_ready_now(selected_profile.name):
             self._apply_profile_selection(service_name, selected_profile)
             return
 

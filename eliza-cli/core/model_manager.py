@@ -129,7 +129,7 @@ class ModelManager:
                 paths.append(pathlib.Path(self._resolve_value(value, profile_env)).resolve())
 
         model_id = profile_env.get("MODEL_ID", "").strip()
-        if backend == "vllm" and model_id:
+        if backend in {"vllm", "sglang"} and model_id:
             hf_home = self._resolve_value(profile_env.get("HF_HOME", self.env["HF_HOME"]), profile_env)
             paths.append((pathlib.Path(hf_home) / "hub" / model_id).resolve())
 
