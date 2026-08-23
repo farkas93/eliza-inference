@@ -7,7 +7,11 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 
 INSTALL_SGLANG="true"
+CLEAN_SGLANG="false"
 SGLANG_PACKAGE="sglang"
+SGLANG_INSTALL_MODE="${SGLANG_INSTALL_MODE:-auto}"
+SGLANG_SOURCE_DIR="${SGLANG_SOURCE_DIR:-$HOME/src/sglang-eliza}"
+SGLANG_SOURCE_REF="${SGLANG_SOURCE_REF:-1cf2b8c54d81802abc15dcf23a29b9cc687bc01e}"
 UV_TORCH_BACKEND="auto"
 EXTRA_UV_PIP_ARGS=()
 
@@ -17,8 +21,24 @@ while [[ $# -gt 0 ]]; do
       INSTALL_SGLANG="false"
       shift
       ;;
+    --clean)
+      CLEAN_SGLANG="true"
+      shift
+      ;;
     --package)
       SGLANG_PACKAGE="${2:-}"
+      shift 2
+      ;;
+    --mode)
+      SGLANG_INSTALL_MODE="${2:-}"
+      shift 2
+      ;;
+    --source-dir)
+      SGLANG_SOURCE_DIR="${2:-}"
+      shift 2
+      ;;
+    --source-ref)
+      SGLANG_SOURCE_REF="${2:-}"
       shift 2
       ;;
     --torch-backend)
@@ -41,7 +61,13 @@ Installs and verifies SGLang for OpenAI-compatible serving.
 
 Options:
   --no-install              Skip installation and only run verification.
+  --clean                   Recreate the SGLang venv before installation.
   --package PACKAGE         SGLang package spec to install. Default: sglang
+  --mode MODE               auto, package, or dgx-spark-source. Default: auto
+  --source-dir PATH         Managed SGLang checkout for DGX Spark source mode.
+                            Default: $SGLANG_SOURCE_DIR
+  --source-ref REF          Tested SGLang revision for DGX Spark source mode.
+                            Default: $SGLANG_SOURCE_REF
   --torch-backend BACKEND   uv torch backend. Default: auto
   --index-url URL           Pass an index URL to uv pip install.
   --extra-index-url URL     Pass an extra index URL to uv pip install.
@@ -60,11 +86,62 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ "$CLEAN_SGLANG" == "true" ]]; then
+  if [[ -z "$SGLANG_VENV" || "$SGLANG_VENV" == "/" ]]; then
+    echo "Refusing to clean invalid SGLANG_VENV: $SGLANG_VENV" >&2
+    exit 1
+  fi
+  echo "Removing existing SGLang environment: $SGLANG_VENV"
+  rm -rf "$SGLANG_VENV"
+fi
+
 ensure_venv "$SGLANG_VENV"
 
+if [[ "$SGLANG_INSTALL_MODE" == "auto" ]]; then
+  gpu_names="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || true)"
+  if [[ "$gpu_names" == *"GB10"* ]]; then
+    SGLANG_INSTALL_MODE="dgx-spark-source"
+  else
+    SGLANG_INSTALL_MODE="package"
+  fi
+fi
+
+if [[ "$SGLANG_INSTALL_MODE" != "package" && "$SGLANG_INSTALL_MODE" != "dgx-spark-source" ]]; then
+  echo "Unsupported SGLang install mode: $SGLANG_INSTALL_MODE" >&2
+  exit 2
+fi
+
 if [[ "$INSTALL_SGLANG" == "true" ]]; then
-  echo "Installing SGLang package into $SGLANG_VENV: $SGLANG_PACKAGE"
-  uv pip install --python "$SGLANG_VENV/bin/python" -U "$SGLANG_PACKAGE" --torch-backend="$UV_TORCH_BACKEND" "${EXTRA_UV_PIP_ARGS[@]}"
+  if [[ "$SGLANG_INSTALL_MODE" == "dgx-spark-source" ]]; then
+    if [[ -d "$SGLANG_SOURCE_DIR/.git" ]]; then
+      if ! git -C "$SGLANG_SOURCE_DIR" diff --quiet || ! git -C "$SGLANG_SOURCE_DIR" diff --cached --quiet; then
+        echo "SGLang source checkout has local changes: $SGLANG_SOURCE_DIR" >&2
+        exit 1
+      fi
+      git -C "$SGLANG_SOURCE_DIR" fetch origin "$SGLANG_SOURCE_REF"
+    else
+      mkdir -p "$(dirname "$SGLANG_SOURCE_DIR")"
+      git clone https://github.com/sgl-project/sglang.git "$SGLANG_SOURCE_DIR"
+      git -C "$SGLANG_SOURCE_DIR" fetch origin "$SGLANG_SOURCE_REF"
+    fi
+    git -C "$SGLANG_SOURCE_DIR" checkout --detach "$SGLANG_SOURCE_REF"
+    echo "Installing tested DGX Spark SGLang revision into $SGLANG_VENV: $SGLANG_SOURCE_REF"
+    uv pip install \
+      --python "$SGLANG_VENV/bin/python" \
+      --prerelease=allow \
+      -U \
+      -e "$SGLANG_SOURCE_DIR/python[all]" \
+      --torch-backend="$UV_TORCH_BACKEND" \
+      "${EXTRA_UV_PIP_ARGS[@]}"
+  else
+    echo "Installing SGLang package into $SGLANG_VENV: $SGLANG_PACKAGE"
+    uv pip install \
+      --python "$SGLANG_VENV/bin/python" \
+      --prerelease=allow \
+      -U "$SGLANG_PACKAGE" \
+      --torch-backend="$UV_TORCH_BACKEND" \
+      "${EXTRA_UV_PIP_ARGS[@]}"
+  fi
 else
   echo "Skipping SGLang install (--no-install)."
 fi
@@ -85,7 +162,7 @@ print(f"  version={sys.version.split()[0]}")
 print(f"  platform={platform.platform()}")
 
 print("\nPackage versions:")
-for package in ("torch", "sglang", "transformers", "tokenizers"):
+for package in ("torch", "sglang", "sgl-kernel", "transformers", "tokenizers"):
     try:
         print(f"  {package}={md.version(package)}")
     except md.PackageNotFoundError:
@@ -107,6 +184,11 @@ try:
     import sglang  # noqa: F401
 except Exception as exc:
     raise SystemExit(f"Failed to import sglang: {exc}") from exc
+
+try:
+    from sgl_kernel import sgl_per_token_quant_fp8  # noqa: F401
+except Exception as exc:
+    raise SystemExit(f"Failed to load native sgl_kernel FP8 operations: {exc}") from exc
 
 sglang_cli = shutil.which("sglang")
 print(f"\nsglang CLI on PATH: {sglang_cli or 'not-found-in-shell-path'}")

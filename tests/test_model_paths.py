@@ -86,6 +86,14 @@ class ModelPathTest(unittest.TestCase):
                     "MODEL_DIR": str(local_model),
                     "HOST": "127.0.0.1",
                     "PORT": "8001",
+                    "TRUST_REMOTE_CODE": "true",
+                    "KV_CACHE_DTYPE": "fp8_e4m3",
+                    "ATTENTION_BACKEND": "flashinfer",
+                    "CHUNKED_PREFILL_SIZE": "2048",
+                    "REASONING_PARSER": "qwen3",
+                    "TOOL_CALL_PARSER": "qwen3_coder",
+                    "MAMBA_RADIX_CACHE_STRATEGY": "extra_buffer",
+                    "MAMBA_SSM_DTYPE": "float32",
                 }
             )
             result = subprocess.run(
@@ -102,6 +110,19 @@ class ModelPathTest(unittest.TestCase):
             self.assertEqual(arguments[:2], ["-m", "sglang.launch_server"])
             model_path_index = arguments.index("--model-path") + 1
             self.assertEqual(arguments[model_path_index], str(local_model))
+            self.assertIn("--trust-remote-code", arguments)
+            expected_options = {
+                "--kv-cache-dtype": "fp8_e4m3",
+                "--attention-backend": "flashinfer",
+                "--chunked-prefill-size": "2048",
+                "--reasoning-parser": "qwen3",
+                "--tool-call-parser": "qwen3_coder",
+                "--mamba-radix-cache-strategy": "extra_buffer",
+                "--mamba-ssm-dtype": "float32",
+            }
+            for option, expected_value in expected_options.items():
+                with self.subTest(option=option):
+                    self.assertEqual(arguments[arguments.index(option) + 1], expected_value)
 
 
 if __name__ == "__main__":

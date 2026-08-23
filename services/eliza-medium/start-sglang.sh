@@ -46,6 +46,38 @@ if [[ -n "${MEM_FRACTION_STATIC:-}" ]]; then
   cmd+=(--mem-fraction-static "$MEM_FRACTION_STATIC")
 fi
 
+if [[ "${TRUST_REMOTE_CODE:-false}" == "true" ]]; then
+  cmd+=(--trust-remote-code)
+fi
+
+if [[ -n "${KV_CACHE_DTYPE:-}" ]]; then
+  cmd+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
+fi
+
+if [[ -n "${ATTENTION_BACKEND:-}" ]]; then
+  cmd+=(--attention-backend "$ATTENTION_BACKEND")
+fi
+
+if [[ -n "${CHUNKED_PREFILL_SIZE:-}" ]]; then
+  cmd+=(--chunked-prefill-size "$CHUNKED_PREFILL_SIZE")
+fi
+
+if [[ -n "${REASONING_PARSER:-}" ]]; then
+  cmd+=(--reasoning-parser "$REASONING_PARSER")
+fi
+
+if [[ -n "${TOOL_CALL_PARSER:-}" ]]; then
+  cmd+=(--tool-call-parser "$TOOL_CALL_PARSER")
+fi
+
+if [[ -n "${MAMBA_RADIX_CACHE_STRATEGY:-}" ]]; then
+  cmd+=(--mamba-radix-cache-strategy "$MAMBA_RADIX_CACHE_STRATEGY")
+fi
+
+if [[ -n "${MAMBA_SSM_DTYPE:-}" ]]; then
+  cmd+=(--mamba-ssm-dtype "$MAMBA_SSM_DTYPE")
+fi
+
 if [[ -n "${SERVED_MODEL_NAME:-}" ]]; then
   cmd+=(--served-model-name "$SERVED_MODEL_NAME")
 fi
