@@ -43,6 +43,7 @@ class ElizaTUI(App):
     LOG_HEIGHT_MIN = 4
     LOG_HEIGHT_STEP = 1
     READY_TIMEOUT_SECONDS = 900
+    SERVICE_REFRESH_INTERVAL_SECONDS = 10
 
     SPINNER_FRAMES = ("|", "/", "-", "\\")
 
@@ -226,7 +227,7 @@ class ElizaTUI(App):
         self.update_monitor()
         self._render_activity_strip()
 
-        self.set_interval(3, self.refresh_stack_state)
+        self.set_interval(self.SERVICE_REFRESH_INTERVAL_SECONDS, self.refresh_stack_state)
         self.set_interval(2, self.update_monitor)
         self.set_interval(1, self.update_logs)
         self.set_interval(0.25, self._process_events)

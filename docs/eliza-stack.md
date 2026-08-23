@@ -22,7 +22,7 @@ vocode-bridge browser-audio transport experiment
 | `stt` | `stt/faster-whisper-small-cpu` | `8011` |
 | `tts` | `tts/piper-lessac` | `8012` |
 | `eliza-small` | `small/gemma4-e4b-q4-llamacpp-128k` | `8002` |
-| `eliza-medium` | `medium/deepseek-v4-flash-ds4-256k` | `8001` |
+| `eliza-medium` | `medium/qwen3.8-27b-fp8-sglang-256k` | `8001` |
 | `vocode-bridge` | `vocode/bridge-local` | `8021` |
 
 ## Lifecycle

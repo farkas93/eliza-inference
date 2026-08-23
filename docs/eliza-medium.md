@@ -1,6 +1,6 @@
 # Eliza Medium
 
-`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is DS4 with `deepseek-v4-flash` (DeepSeek V4 Flash via the DS4 server, 256k context).
+`eliza-medium` is the larger, more capable local model service intended for coding, reasoning, and longer-context tasks. It is model/runtime agnostic at the service boundary. The default profile is Qwen3.8 27B FP8 through SGLang with 256k context.
 
 ## Profiles
 
@@ -21,24 +21,24 @@
 | `medium/qwen3_6-27b-fp8-vllm-256k` | vLLM | `262144` | vLLM 256K target |
 | `medium/qwen3_6-27b-fp8-vllm-256k-kvfp8` | vLLM | `262144` | vLLM KV fp8 comparison |
 | `medium/qwen3.6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
-| `medium/qwen3.8-27b-fp8-sglang-256k` | sglang | `262144` | Qwen3.8 FP8 high-throughput profile |
+| `medium/qwen3.8-27b-fp8-sglang-256k` | sglang | `262144` | Default Qwen3.8 FP8 high-throughput profile |
 | `medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k` | llama.cpp | `262144` | Qwen3.8 llama.cpp compatibility profile |
 | `medium/qwen3_6-27b-fp8-vllm-256k-native` | vLLM | `262144` | vLLM native max-context profile |
-| `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | Default DS4 256K long-context profile |
+| `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | Alternative DS4 256K long-context profile |
 
 ## Start
 
 ```bash
-# Default profile (DS4 deepseek-v4-flash)
+# Default profile (Qwen3.8 FP8 through SGLang)
 ./scripts/start eliza-medium
 ./scripts/smoke-test eliza-medium
 
 # Explicit profile selection
-./scripts/start eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
-./scripts/smoke-test eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
+./scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
+./scripts/smoke-test eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 ```
 
-Start with the default DS4 profile. For llama.cpp alternatives, use an explicit profile:
+For llama.cpp alternatives, use an explicit profile:
 
 ```bash
 ./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k

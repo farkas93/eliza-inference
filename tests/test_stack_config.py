@@ -43,6 +43,34 @@ class StackConfigTest(unittest.TestCase):
             with self.subTest(model=name):
                 self.assertIn(model["service"], services)
 
+    def test_default_profiles_are_consistent(self) -> None:
+        services = {
+            service["name"]: service["profile"] for service in self.config.get("services", [])
+        }
+        common_script = (ROOT_DIR / "scripts" / "lib" / "common.sh").read_text(encoding="utf-8")
+        clean_system = (ROOT_DIR / "scripts" / "installation-suite" / "setup-clean-system").read_text(
+            encoding="utf-8"
+        )
+
+        for service_name, variable_name in (
+            ("eliza-medium", "MEDIUM_PROFILE"),
+            ("eliza-small", "SMALL_PROFILE"),
+            ("stt", "STT_PROFILE"),
+            ("tts", "TTS_PROFILE"),
+        ):
+            profile = services[service_name]
+            with self.subTest(service=service_name):
+                self.assertIn(f'{variable_name}="{profile}"', clean_system)
+
+        self.assertIn(
+            f'eliza-medium) PROFILE="{services["eliza-medium"]}"',
+            common_script,
+        )
+        self.assertEqual(
+            self.config["models"]["eliza-medium"]["profile"],
+            services["eliza-medium"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

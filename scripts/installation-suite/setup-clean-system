@@ -3,13 +3,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SUITE_DIR="$ROOT_DIR/scripts/installation-suite"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
 
 WITH_VLLM="false"
 WITH_SGLANG="true"
 DOWNLOAD_MODELS="true"
 RUN_SMOKE_TESTS="true"
-SMALL_PROFILE="small/gemma4-e2b-q4-llamacpp-8k"
-MEDIUM_PROFILE="medium/qwen3_6-27b-q4-llamacpp-32k"
+SMALL_PROFILE="small/gemma4-e4b-q4-llamacpp-128k"
+MEDIUM_PROFILE="medium/qwen3.8-27b-fp8-sglang-256k"
 STT_PROFILE="stt/faster-whisper-small-cpu"
 TTS_PROFILE="tts/piper-lessac"
 
@@ -19,14 +22,15 @@ Usage: ./scripts/setup clean-system [options]
 
 Runs clean-system setup in this order:
   1) prerequisites
-  2) llamacpp
-  3) optional sglang
-  4) stt
-  5) tts
-  6) vocode
-  7) optional vllm
-  8) optional model downloads (eliza-small, eliza-medium)
-  9) optional smoke tests (stt, tts, eliza-small, eliza-medium)
+  2) required model backends (llama.cpp/SGLang/vLLM/DS4)
+  3) stt
+  4) tts
+  5) vocode
+  6) runtime verification
+  7) optional model downloads (eliza-small, eliza-medium)
+  8) setup completion
+  9) start selected services and wait for readiness
+  10) optional smoke tests (stt, tts, eliza-small, eliza-medium)
 
 Options:
   --with-vllm            Include vLLM installation.
@@ -39,11 +43,6 @@ Options:
   --tts-profile NAME     Override TTS profile. Default: $TTS_PROFILE
 USAGE
 }
-
-if [[ $# -eq 0 ]]; then
-  print_manual
-  exit 0
-fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -90,51 +89,108 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "[1/9] Installing prerequisites"
+wait_for_health() {
+  local url="$1"
+  local service_name="$2"
+  local timeout_seconds="$3"
+  local started
+  started="$(date +%s)"
+
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    if (( $(date +%s) - started > timeout_seconds )); then
+      echo "Timed out waiting for $service_name: $url" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "[ready] $service_name"
+}
+
+profile_backend() {
+  local profile="$1"
+  local profile_path
+  profile_path="$(resolve_profile_path "$profile" || true)"
+  if [[ -z "$profile_path" ]]; then
+    echo "Profile not found: $profile" >&2
+    return 1
+  fi
+  (
+    set -a
+    # shellcheck disable=SC1090
+    source "$profile_path"
+    set +a
+    printf '%s\n' "${BACKEND:-llamacpp}"
+  )
+}
+
+SMALL_BACKEND="$(profile_backend "$SMALL_PROFILE")"
+MEDIUM_BACKEND="$(profile_backend "$MEDIUM_PROFILE")"
+
+if [[ "$WITH_SGLANG" != "true" && ( "$SMALL_BACKEND" == "sglang" || "$MEDIUM_BACKEND" == "sglang" ) ]]; then
+  echo "--no-sglang conflicts with selected SGLang profile" >&2
+  exit 2
+fi
+
+echo "[1/10] Installing prerequisites"
 "$SUITE_DIR/install-prerequisites"
 
-echo "[2/9] Installing llama.cpp"
-"$SUITE_DIR/install-llamacpp"
-
-if [[ "$WITH_SGLANG" == "true" ]]; then
-  echo "[3/9] Installing SGLang"
-  "$SUITE_DIR/install-sglang"
-else
-  echo "[3/9] Skipping SGLang (use default to install)"
+echo "[2/10] Installing required model backends"
+if [[ "$SMALL_BACKEND" == "llamacpp" || "$MEDIUM_BACKEND" == "llamacpp" ]]; then
+  "$SUITE_DIR/install-llamacpp"
 fi
 
-echo "[4/9] Installing STT"
+if [[ "$WITH_SGLANG" == "true" || "$SMALL_BACKEND" == "sglang" || "$MEDIUM_BACKEND" == "sglang" ]]; then
+  "$SUITE_DIR/install-sglang"
+fi
+
+if [[ "$WITH_VLLM" == "true" || "$SMALL_BACKEND" == "vllm" || "$MEDIUM_BACKEND" == "vllm" ]]; then
+  "$SUITE_DIR/install-vllm"
+fi
+
+if [[ "$SMALL_BACKEND" == "ds4" || "$MEDIUM_BACKEND" == "ds4" ]]; then
+  "$SUITE_DIR/install-ds4"
+fi
+
+echo "[3/10] Installing STT"
 "$SUITE_DIR/install-stt" --profile "$STT_PROFILE"
 
-echo "[5/9] Installing TTS"
+echo "[4/10] Installing TTS"
 "$SUITE_DIR/install-tts" --profile "$TTS_PROFILE"
 
-echo "[6/9] Installing vocode bridge deps"
+echo "[5/10] Installing vocode bridge deps"
 "$SUITE_DIR/install-vocode"
 
-if [[ "$WITH_VLLM" == "true" ]]; then
-  echo "[7/9] Installing vLLM"
-  "$SUITE_DIR/install-vllm"
-else
-  echo "[7/9] Skipping vLLM (use --with-vllm to enable)"
-fi
+echo "[6/10] Runtime installation complete"
 
 if [[ "$DOWNLOAD_MODELS" == "true" ]]; then
-  echo "[8/9] Downloading default models"
+  echo "[7/10] Downloading default models"
   "$ROOT_DIR/scripts/download-models" eliza-small --profile "$SMALL_PROFILE"
   "$ROOT_DIR/scripts/download-models" eliza-medium --profile "$MEDIUM_PROFILE"
 else
-  echo "[8/9] Skipping model downloads"
+  echo "[7/10] Skipping model downloads"
 fi
 
+echo "[8/10] Setup phase complete"
+
 if [[ "$RUN_SMOKE_TESTS" == "true" ]]; then
-  echo "[9/9] Running smoke tests"
+  echo "[9/10] Starting selected services"
+  "$ROOT_DIR/scripts/restart" eliza-medium --profile "$MEDIUM_PROFILE"
+  wait_for_health "http://127.0.0.1:$ELIZA_MEDIUM_PORT/v1/models" eliza-medium 900
+  "$ROOT_DIR/scripts/restart" eliza-small --profile "$SMALL_PROFILE"
+  wait_for_health "http://127.0.0.1:$ELIZA_SMALL_PORT/v1/models" eliza-small 300
+  "$ROOT_DIR/scripts/restart" stt --profile "$STT_PROFILE"
+  wait_for_health "http://127.0.0.1:$STT_PORT/health" stt 120
+  "$ROOT_DIR/scripts/restart" tts --profile "$TTS_PROFILE"
+  wait_for_health "http://127.0.0.1:$TTS_PORT/health" tts 120
+
+  echo "[10/10] Running smoke tests"
   "$ROOT_DIR/scripts/smoke-test" stt --profile "$STT_PROFILE"
   "$ROOT_DIR/scripts/smoke-test" tts --profile "$TTS_PROFILE"
   "$ROOT_DIR/scripts/smoke-test" eliza-small --profile "$SMALL_PROFILE"
   "$ROOT_DIR/scripts/smoke-test" eliza-medium --profile "$MEDIUM_PROFILE"
 else
-  echo "[9/9] Skipping smoke tests"
+  echo "[9/10] Skipping service startup"
+  echo "[10/10] Skipping smoke tests"
 fi
 
 echo

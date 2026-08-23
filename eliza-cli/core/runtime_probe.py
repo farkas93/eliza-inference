@@ -26,14 +26,18 @@ class RuntimeProbe:
         merged: Dict[str, Service] = {}
 
         for name, service in services.items():
-            health_ok = self._health_ok(service.health_url)
+            live_model = "-"
+            models_url = f"{service.base_url.rstrip('/')}/models" if service.base_url else ""
+            if models_url and service.health_url.rstrip("/") == models_url:
+                health_ok, live_model = self._probe_model_endpoint(models_url)
+            else:
+                health_ok = self._health_ok(service.health_url)
+                if health_ok and service.base_url:
+                    _, live_model = self._probe_model_endpoint(models_url)
+
             tmux_running = self._tmux_running(name)
             status = "running" if (tmux_running or health_ok) else "stopped"
             health = "ok" if health_ok else "-"
-
-            live_model = "-"
-            if health_ok and service.base_url:
-                live_model = self._live_model_from_base_url(service.base_url)
 
             live_profile = runtime_profiles.get(name)
             if live_profile is None and live_model not in ("", "-", "unavailable"):
@@ -90,35 +94,36 @@ class RuntimeProbe:
         except (URLError, TimeoutError, ValueError):
             return False
 
-    def _live_model_from_base_url(self, base_url: str) -> str:
-        models_url = f"{base_url.rstrip('/')}/models"
+    def _probe_model_endpoint(self, models_url: str) -> tuple[bool, str]:
         request = Request(models_url, method="GET")
         try:
             with urlopen(request, timeout=2.0) as response:
+                if not 200 <= response.status < 300:
+                    return False, "unavailable"
                 body = response.read().decode("utf-8", errors="replace")
         except (URLError, TimeoutError, ValueError):
-            return "unavailable"
+            return False, "unavailable"
 
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
-            return "unavailable"
+            return True, "unavailable"
 
         if isinstance(data, dict):
             entries = data.get("data")
             if isinstance(entries, list) and entries:
                 first = entries[0]
                 if isinstance(first, dict) and "id" in first:
-                    return str(first["id"])
+                    return True, str(first["id"])
             if "id" in data:
-                return str(data["id"])
+                return True, str(data["id"])
 
         if isinstance(data, list) and data:
             first = data[0]
             if isinstance(first, dict) and "id" in first:
-                return str(first["id"])
+                return True, str(first["id"])
 
-        return "unavailable"
+        return True, "unavailable"
 
     def _infer_profile_from_model(
         self,

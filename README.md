@@ -8,7 +8,7 @@ Handoff context for the Vocode effort is tracked in `next-task.md`.
 
 | Service | Default Runtime | Default Model | Port |
 | --- | --- | --- | ---: |
-| `eliza-medium` | DS4 | `deepseek-v4-flash` (DS4 server) | `8001` |
+| `eliza-medium` | SGLang | `Qwen/Qwen3.8-27B-FP8` | `8001` |
 | `eliza-small` | llama.cpp | `gemma-4-E4B-it` (128k context) | `8002` |
 | `stt` | faster-whisper | `Systran/faster-whisper-small` CPU int8 | `8011` |
 | `tts` | Piper | `en_US-lessac-medium` | `8012` |
@@ -39,7 +39,7 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 ./scripts/setup tts --backend piper --profile tts/piper-lessac
 ./scripts/setup vocode
 ./scripts/download-models eliza-small
-./scripts/download-models eliza-medium --profile medium/deepseek-v4-flash-ds4-256k
+./scripts/download-models eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 ./scripts/start-stack
 ./scripts/smoke-test-stack
 ```
@@ -87,7 +87,7 @@ Profiles live under `configs/profiles/` and are grouped by capability/runtime cl
 - `configs/profiles/vocode/`
 - `configs/profiles/voice/`
 
-Use path-style profile IDs in commands, for example `small/gemma4-e4b-q4-llamacpp-128k` or `medium/deepseek-v4-flash-ds4-256k`.
+Use path-style profile IDs in commands, for example `small/gemma4-e4b-q4-llamacpp-128k` or `medium/qwen3.8-27b-fp8-sglang-256k`.
 
 Voice profiles include llama.cpp and vLLM variants so Gemma backends can be compared without changing client code.
 

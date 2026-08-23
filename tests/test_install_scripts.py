@@ -16,6 +16,16 @@ class InstallScriptTest(unittest.TestCase):
         self.assertIn('SGLANG_BUILD_RUST_EXTS="${SGLANG_BUILD_RUST_EXTS:-none}"', installer)
         self.assertIn('SGLANG_BUILD_RUST_EXTS="$SGLANG_BUILD_RUST_EXTS" uv pip install', installer)
 
+    def test_clean_system_runs_defaults_and_starts_before_smoke_tests(self) -> None:
+        installer = (ROOT_DIR / "scripts" / "installation-suite" / "setup-clean-system").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn('if [[ $# -eq 0 ]]', installer)
+        start_index = installer.index('"$ROOT_DIR/scripts/restart" eliza-medium')
+        smoke_index = installer.index('"$ROOT_DIR/scripts/smoke-test" eliza-medium')
+        self.assertLess(start_index, smoke_index)
+
 
 if __name__ == "__main__":
     unittest.main()

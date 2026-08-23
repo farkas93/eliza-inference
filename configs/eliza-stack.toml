@@ -21,7 +21,7 @@ enabled = true
 
 [[services]]
 name = "eliza-medium"
-profile = "medium/deepseek-v4-flash-ds4-256k"
+profile = "medium/qwen3.8-27b-fp8-sglang-256k"
 health_url = "http://127.0.0.1:8001/v1/models"
 enabled = true
 
@@ -41,9 +41,9 @@ purpose = "low-latency voice turns"
 
 [models.eliza-medium]
 service = "eliza-medium"
-profile = "medium/deepseek-v4-flash-ds4-256k"
+profile = "medium/qwen3.8-27b-fp8-sglang-256k"
 public_name = "eliza-medium"
-actual_model = "deepseek-v4-flash"
+actual_model = "Qwen/Qwen3.8-27B-FP8"
 base_url = "http://127.0.0.1:8001/v1"
 purpose = "larger reasoning and coding tasks"
 

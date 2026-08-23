@@ -2,10 +2,10 @@
 
 Larger local reasoning/coding endpoint. Stable runtime paths are llama.cpp and SGLang; vLLM profiles remain experimental on GB10.
 
-Default profile: `medium/qwen3.6-35b-a3b-q4-llamacpp-256k`.
+Default profile: `medium/qwen3.8-27b-fp8-sglang-256k`.
 
 ```bash
-./scripts/start eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+./scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 ./scripts/smoke-test eliza-medium
 
 ./scripts/setup sglang
