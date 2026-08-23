@@ -16,7 +16,7 @@ Types:
                      then voice-latency for eliza-small
 
 Examples:
-  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.6-27b-q4-llamacpp-32k
+  ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
   ./scripts/run-benchmark voice-latency eliza-small
   ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens-list 8192,32768,131072
   ./scripts/run-benchmark all

@@ -7,23 +7,16 @@
 | Profile | Runtime | Context | Use |
 | --- | --- | ---: | --- |
 | `medium/openpangu-2_0-flash-q4-llamacpp-256k` | llama.cpp | `262144` | Alternative openPangu profile |
-| `medium/openpangu-2_0-flash-q4-llamacpp-512k` | llama.cpp | `524288` | Max-context profile (capacity test) |
-| `medium/openpangu-2_0-flash-q4-llamacpp-20k` | llama.cpp | `20480` | Conservative stability fallback |
-| `medium/qwen3_6-27b-q4-llamacpp-32k` | llama.cpp | `32768` | Default compatibility profile |
-| `medium/qwen3_6-27b-q4-llamacpp-128k` | llama.cpp | `131072` | Larger context test using the default Q4 GGUF |
 | `medium/gemma4-26b-a4b-q4-llamacpp-256k` | llama.cpp | `262144` | Gemma 4 26B A4B long-context profile |
-| `medium/qwen3_6-27b-q6-llamacpp-32k` | llama.cpp | `32768` | Higher precision Q6 comparison |
-| `medium/qwen3_6-27b-q8-llamacpp-32k` | llama.cpp | `32768` | Higher precision Q8 comparison |
 | `medium/tinyllama-1_1b-vllm-2k` | vLLM | `2048` | vLLM runtime sanity profile |
-| `medium/qwen3_6-27b-fp8-vllm-8k` | vLLM | `8192` | vLLM/Qwen compatibility test |
-| `medium/qwen3_6-27b-fp8-vllm-32k` | vLLM | `32768` | vLLM/Qwen step-up test |
-| `medium/qwen3_6-27b-fp8-vllm-128k` | vLLM | `131072` | vLLM long-context baseline |
-| `medium/qwen3_6-27b-fp8-vllm-256k` | vLLM | `262144` | vLLM 256K target |
-| `medium/qwen3_6-27b-fp8-vllm-256k-kvfp8` | vLLM | `262144` | vLLM KV fp8 comparison |
 | `medium/qwen3.6-35b-a3b-q4-llamacpp-256k` | llama.cpp | `262144` | Default long-context profile |
 | `medium/qwen3.8-27b-fp8-sglang-256k` | sglang | `262144` | Default Qwen3.8 FP8 high-throughput profile |
 | `medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k` | llama.cpp | `262144` | Qwen3.8 llama.cpp compatibility profile |
-| `medium/qwen3_6-27b-fp8-vllm-256k-native` | vLLM | `262144` | vLLM native max-context profile |
+| `medium/qwen3.6-27b-nvfp4-sglang-256k` | SGLang | `262144` | Qwen3.6 NVFP4 SGLang alternative |
+| `medium/qwen3.6-27b-nvfp4-vllm-256k` | vLLM | `262144` | Experimental Qwen3.6 vLLM profile |
+| `medium/qwen3-coder-next-sglang-256k` | SGLang | `262144` | Agentic coding profile |
+| `medium/qwen3-coder-next-ud-q4-k-m-llamacpp-256k` | llama.cpp | `262144` | Agentic coding llama.cpp fallback |
+| `medium/deepseek-v4-flash-ds4-128k` | ds4 | `131072` | Conservative DS4 profile |
 | `medium/deepseek-v4-flash-ds4-256k` | ds4 | `262144` | Alternative DS4 256K long-context profile |
 
 ## Start
@@ -45,34 +38,11 @@ For llama.cpp alternatives, use an explicit profile:
 ./scripts/smoke-test eliza-medium --profile medium/qwen3.6-35b-a3b-q4-llamacpp-256k
 ```
 
-openPangu alternative profile and max-context sweep:
-
-Max-context sweep for openPangu:
+openPangu alternative profile:
 
 ```bash
-./scripts/restart eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k
-./scripts/smoke-test eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k
-./scripts/run-benchmark memory-footprint eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-512k --context-tokens-list 131072,196608,262144,327680,393216,458752,524288
-```
-
-Suggested llama.cpp test ladder:
-
-```bash
-./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-
-./scripts/restart eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k
-./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k
-./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-128k --context-tokens-list 32768,131072
-```
-
-For higher precision, download and test Q6/Q8 at 32K before trying large contexts:
-
-```bash
-./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q6-llamacpp-32k
-./scripts/restart eliza-medium --profile medium/qwen3_6-27b-q6-llamacpp-32k
-./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-q6-llamacpp-32k
+./scripts/restart eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
+./scripts/smoke-test eliza-medium --profile medium/openpangu-2_0-flash-q4-llamacpp-256k
 ```
 
 Qwen3.8 runtime comparison (SGLang vs llama.cpp):
@@ -96,5 +66,5 @@ To remove local vLLM state and stop stale vLLM sessions:
 ## Benchmark
 
 ```bash
-./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k --context-tokens 32768
+./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k --context-tokens 32768
 ```

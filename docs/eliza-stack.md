@@ -94,7 +94,7 @@ Then point the stack config at it:
 ```toml
 [models.eliza-small]
 service = "eliza-small"
-profile = "small/some-new-profile"
+profile = "small/gemma4-e4b-q4-llamacpp-128k"
 public_name = "eliza-small"
 actual_model = "actual-backend-model-name"
 base_url = "http://127.0.0.1:8002/v1"

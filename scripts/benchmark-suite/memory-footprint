@@ -31,7 +31,7 @@ Options:
   --output-json <path>         Explicit output path (default: benchmarks/results/...)
 
 Examples:
-  ./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+  ./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
   ./scripts/run-benchmark memory-footprint eliza-medium --context-tokens-list 8192,32768,131072
 USAGE
   exit 0

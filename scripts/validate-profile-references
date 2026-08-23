@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+validator="$ROOT_DIR/scripts/lib/profile_references.py"
+if [[ -x "$BASE_VENV/bin/python" ]]; then
+  exec "$BASE_VENV/bin/python" "$validator"
+elif command -v python3 >/dev/null 2>&1; then
+  exec python3 "$validator"
+elif command -v python >/dev/null 2>&1; then
+  exec python "$validator"
+elif command -v uv >/dev/null 2>&1; then
+  exec uv run --project "$ROOT_DIR" python "$validator"
+else
+  echo "Python is required to validate profile references." >&2
+  exit 1
+fi

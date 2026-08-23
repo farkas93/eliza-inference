@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=forking
 WorkingDirectory=%h/private/eliza-inference
-ExecStart=%h/private/eliza-inference/scripts/start eliza-medium --profile eliza-medium-qwen-llamacpp-32k
-ExecStop=%h/private/eliza-inference/scripts/stop eliza-medium --profile eliza-medium-qwen-llamacpp-32k
+ExecStart=%h/private/eliza-inference/scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
+ExecStop=%h/private/eliza-inference/scripts/stop eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
 Restart=on-failure
 
 [Install]

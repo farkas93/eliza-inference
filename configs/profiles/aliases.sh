@@ -7,16 +7,6 @@
 
 # Canonical alias mappings (shorthand -> full profile path)
 case "$profile" in
-  medium/qwen-llamacpp-32k|medium/eliza-medium-qwen-llamacpp-32k) profile="medium/qwen3_6-27b-q4-llamacpp-32k" ;;
-  medium/qwen-llamacpp-128k|medium/eliza-medium-qwen-llamacpp-128k) profile="medium/qwen3_6-27b-q4-llamacpp-128k" ;;
-  medium/qwen-q6-llamacpp-32k|medium/eliza-medium-qwen-q6-llamacpp-32k) profile="medium/qwen3_6-27b-q6-llamacpp-32k" ;;
-  medium/qwen-q8-llamacpp-32k|medium/eliza-medium-qwen-q8-llamacpp-32k) profile="medium/qwen3_6-27b-q8-llamacpp-32k" ;;
-  medium/qwen-vllm-smoke-8k|medium/eliza-medium-qwen-vllm-smoke-8k) profile="medium/qwen3_6-27b-fp8-vllm-8k" ;;
-  medium/qwen-vllm-smoke-32k|medium/eliza-medium-qwen-vllm-smoke-32k) profile="medium/qwen3_6-27b-fp8-vllm-32k" ;;
-  medium/qwen-vllm-128k-experimental|medium/eliza-medium-qwen-vllm-128k-experimental) profile="medium/qwen3_6-27b-fp8-vllm-128k" ;;
-  medium/qwen-vllm-256k|medium/eliza-medium-qwen-vllm-256k|medium/qwen-vllm-200k-experimental|medium/eliza-medium-qwen-vllm-200k-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k" ;;
-  medium/qwen-vllm-256k-kvfp8|medium/eliza-medium-qwen-vllm-256k-kvfp8|medium/qwen-vllm-200k-fp8kv-experimental|medium/eliza-medium-qwen-vllm-200k-fp8kv-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k-kvfp8" ;;
-  medium/qwen-vllm-256k-native|medium/eliza-medium-qwen-vllm-256k-native|medium/qwen-vllm-262k-experimental|medium/eliza-medium-qwen-vllm-262k-experimental) profile="medium/qwen3_6-27b-fp8-vllm-256k-native" ;;
   medium/qwen36-35b-a3b-llamacpp-256k|medium/eliza-medium-qwen36-35b-a3b-llamacpp-256k|medium/qwen36-35b-a3b-llamacpp-200k-experimental|medium/eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental) profile="medium/qwen3.6-35b-a3b-q4-llamacpp-256k" ;;
   medium/gemma4-26b-a4b-llamacpp-256k-experimental|medium/eliza-medium-gemma4-26b-a4b-llamacpp-256k-experimental) profile="medium/gemma4-26b-a4b-q4-llamacpp-256k" ;;
   medium/vllm-smoke-tinyllama|medium/eliza-medium-vllm-smoke-tinyllama) profile="medium/tinyllama-1_1b-vllm-2k" ;;

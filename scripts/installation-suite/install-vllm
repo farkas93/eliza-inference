@@ -220,6 +220,6 @@ Next low-risk serving check:
   ./scripts/smoke-test eliza-small --profile small/gemma4-e4b-vllm-8k
 
 Then test Qwen conservatively:
-  ./scripts/start eliza-medium --profile medium/qwen3_6-27b-fp8-vllm-8k
-  ./scripts/smoke-test eliza-medium --profile medium/qwen3_6-27b-fp8-vllm-8k
+  ./scripts/start eliza-medium --profile medium/qwen3.6-27b-nvfp4-vllm-256k
+  ./scripts/smoke-test eliza-medium --profile medium/qwen3.6-27b-nvfp4-vllm-256k
 EOF

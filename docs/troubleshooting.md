@@ -162,27 +162,22 @@ For the full voice pipeline, `voice/assistant-local` now expects `whisper-small`
 Try profiles in this order:
 
 ```text
-medium/qwen3_6-27b-q4-llamacpp-32k
-medium/qwen3_6-27b-q4-llamacpp-128k
-medium/qwen3_6-27b-q6-llamacpp-32k
-medium/qwen3_6-27b-q8-llamacpp-32k
-medium/tinyllama-1_1b-vllm-2k
-medium/qwen3_6-27b-fp8-vllm-8k
-medium/qwen3_6-27b-fp8-vllm-32k
-medium/qwen3_6-27b-fp8-vllm-128k
-medium/qwen3_6-27b-fp8-vllm-256k
-medium/qwen3_6-27b-fp8-vllm-256k-kvfp8
+medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k
 medium/qwen3.6-35b-a3b-q4-llamacpp-256k
+medium/qwen3.8-27b-fp8-sglang-256k
+medium/qwen3.6-27b-nvfp4-sglang-256k
+medium/qwen3.6-27b-nvfp4-vllm-256k
+medium/tinyllama-1_1b-vllm-2k
 ```
 
 Stop `eliza-small` before testing larger `eliza-medium` profiles.
 
-If Qwen hangs during vLLM model load with no API port listening, first test `medium/qwen3_6-27b-fp8-vllm-8k`. The lightweight vLLM profiles disable prefix caching and enable eager mode. Prefix caching for Qwen hybrid/Mamba models is experimental in vLLM and should be tested only after basic serving works.
+If Qwen hangs during vLLM model load with no API port listening, switch to the SGLang default or llama.cpp fallback. The vLLM profiles remain experimental on GB10.
 
 If vLLM remains unreliable, clean it up and use the llama.cpp Qwen profile:
 
 ```bash
 ./scripts/cleanup-vllm
-./scripts/download-models eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
-./scripts/start eliza-medium --profile medium/qwen3_6-27b-q4-llamacpp-32k
+./scripts/download-models eliza-medium --profile medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k
+./scripts/start eliza-medium --profile medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k
 ```
