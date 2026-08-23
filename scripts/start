@@ -12,8 +12,24 @@ require_command tmux
 mkdir -p "$LOG_DIR"
 
 if tmux_has_session; then
-  echo "Service already running in tmux session: $SESSION_NAME"
-  exit 0
+  live_profile="$(runtime_state get --state "$RUNTIME_STATE_FILE" --service "$SERVICE" 2>/dev/null || true)"
+  live_profile_path=""
+  if [[ -n "$live_profile" ]]; then
+    live_profile_path="$(resolve_profile_path "$live_profile" || true)"
+  fi
+
+  if [[ -n "$live_profile_path" && "$live_profile_path" == "$PROFILE_PATH" ]]; then
+    echo "Service already running with requested profile: $SERVICE ($live_profile)"
+    exit 0
+  fi
+
+  if [[ -n "$live_profile" ]]; then
+    echo "Service $SERVICE is already running with profile $live_profile." >&2
+  else
+    echo "Service $SERVICE is already running, but its live profile is unknown." >&2
+  fi
+  echo "Use ./scripts/restart $SERVICE --profile $PROFILE to switch profiles." >&2
+  exit 1
 fi
 
 if [[ ! -x "$SERVICE_DIR/start.sh" ]]; then
@@ -23,7 +39,20 @@ fi
 
 tmux new-session -d -s "$SESSION_NAME" "bash -lc 'cd \"$ROOT_DIR\" && set -a; [[ -f \"$ROOT_DIR/.env\" ]] && source \"$ROOT_DIR/.env\"; source \"$PROFILE_PATH\"; set +a; exec \"$SERVICE_DIR/start.sh\" 2>&1 | tee -a \"$LOG_FILE\"'"
 
-runtime_state set --state "$RUNTIME_STATE_FILE" --service "$SERVICE" --profile "$PROFILE" || true
+sleep "${START_LIVENESS_DELAY_SECONDS:-1}"
+if ! tmux_has_session; then
+  runtime_state clear --state "$RUNTIME_STATE_FILE" --service "$SERVICE" >/dev/null 2>&1 || true
+  echo "Service $SERVICE exited during startup. Check logs: $LOG_FILE" >&2
+  exit 1
+fi
 
-echo "Started $SERVICE with profile $PROFILE in tmux session $SESSION_NAME"
+canonical_profile="${PROFILE_PATH#"$ROOT_DIR/configs/profiles/"}"
+canonical_profile="${canonical_profile%.env}"
+if ! runtime_state set --state "$RUNTIME_STATE_FILE" --service "$SERVICE" --profile "$canonical_profile"; then
+  tmux kill-session -t "$SESSION_NAME" >/dev/null 2>&1 || true
+  echo "Failed to record runtime state; stopped $SERVICE to avoid inconsistent state." >&2
+  exit 1
+fi
+
+echo "Started $SERVICE with profile $canonical_profile in tmux session $SESSION_NAME"
 echo "Logs: $LOG_FILE"

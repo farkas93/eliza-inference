@@ -17,6 +17,9 @@ from .models import Profile, Service
 _SIZE_CACHE_TTL = 60.0
 # TTL for cached profile env reads (seconds)
 _ENV_CACHE_TTL = 30.0
+_ENV_VAR_PATTERN = re.compile(
+    r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))"
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +45,7 @@ class ModelEntry:
 class ModelManager:
     def __init__(self, root_dir: pathlib.Path):
         self.root_dir = root_dir
-        self.env = self._load_env()
+        self.env = self._resolve_environment(self._load_env())
         self.model_home = pathlib.Path(self.env["MODEL_HOME"]).expanduser().resolve()
         self._profile_env_cache: dict[str, tuple[float, dict[str, str]]] = {}
         self._estimate_size_cache: dict[str, tuple[float, int | None]] = {}
@@ -75,6 +78,31 @@ class ModelManager:
         defaults.update(env)
         return defaults
 
+    def _expand_value(
+        self,
+        value: str,
+        values: Dict[str, str],
+        resolving: tuple[str, ...] = (),
+    ) -> str:
+        def substitute(match: re.Match[str]) -> str:
+            key = match.group(1) or match.group(3)
+            default = match.group(2)
+            if key in resolving:
+                chain = " -> ".join((*resolving, key))
+                raise ValueError(f"Cyclic environment variable reference: {chain}")
+
+            replacement = values.get(key)
+            if replacement is None or (default is not None and replacement == ""):
+                replacement = default or ""
+            return self._expand_value(str(replacement), values, (*resolving, key))
+
+        return os.path.expanduser(_ENV_VAR_PATTERN.sub(substitute, value))
+
+    def _resolve_environment(self, values: Dict[str, str]) -> Dict[str, str]:
+        merged = {key: str(value) for key, value in os.environ.items()}
+        merged.update(values)
+        return {key: self._expand_value(value, merged, (key,)) for key, value in values.items()}
+
     def _load_profile_env(self, profile: Profile) -> Dict[str, str]:
         cached = self._profile_env_cache.get(profile.name)
         if cached is not None:
@@ -95,19 +123,10 @@ class ModelManager:
         return data
 
     def _resolve_value(self, value: str, profile_env: Dict[str, str]) -> str:
-        merged = dict(self.env)
+        merged = {key: str(item) for key, item in os.environ.items()}
+        merged.update(self.env)
         merged.update(profile_env)
-
-        pattern = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
-
-        def substitute(match: re.Match[str]) -> str:
-            key = match.group(1)
-            default = match.group(2) or ""
-            return merged.get(key, default)
-
-        value = pattern.sub(substitute, value)
-        value = os.path.expandvars(value)
-        return os.path.expanduser(value)
+        return self._expand_value(value, merged)
 
     def _expected_paths_for_profile(self, profile: Profile) -> List[pathlib.Path]:
         profile_env = self._load_profile_env(profile)
@@ -130,8 +149,11 @@ class ModelManager:
 
         model_id = profile_env.get("MODEL_ID", "").strip()
         if backend in {"vllm", "sglang"} and model_id:
-            hf_home = self._resolve_value(profile_env.get("HF_HOME", self.env["HF_HOME"]), profile_env)
-            paths.append((pathlib.Path(hf_home) / "hub" / model_id).resolve())
+            if model_dir is not None:
+                paths.append(model_dir)
+            else:
+                hf_home = self._resolve_value(profile_env.get("HF_HOME", self.env["HF_HOME"]), profile_env)
+                paths.append((pathlib.Path(hf_home) / "hub" / model_id).resolve())
 
         if not paths and model_dir is not None:
             paths.append(model_dir)

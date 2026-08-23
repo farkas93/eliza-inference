@@ -12,9 +12,9 @@ require_command tmux
 
 if tmux_has_session; then
   tmux kill-session -t "$SESSION_NAME"
-  runtime_state clear --state "$RUNTIME_STATE_FILE" --service "$SERVICE" || true
+  runtime_state clear --state "$RUNTIME_STATE_FILE" --service "$SERVICE"
   echo "Stopped $SERVICE ($SESSION_NAME)"
 else
-  runtime_state clear --state "$RUNTIME_STATE_FILE" --service "$SERVICE" || true
+  runtime_state clear --state "$RUNTIME_STATE_FILE" --service "$SERVICE"
   echo "Service is not running: $SERVICE ($SESSION_NAME)"
 fi

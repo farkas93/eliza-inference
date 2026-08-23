@@ -16,9 +16,11 @@ else
   exit 1
 fi
 
+model_path="${MODEL_PATH:-${MODEL_DIR:-${MODEL_ID:?MODEL_ID is required}}}"
+
 cmd=(
   "${sglang_cmd[@]}" serve
-  --model-path "${MODEL_ID:?MODEL_ID is required}"
+  --model-path "$model_path"
   --host "${HOST:-0.0.0.0}"
   --port "${PORT:-8001}"
 )

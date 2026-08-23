@@ -60,8 +60,9 @@ case "$SERVICE" in
         exit 1
       fi
     else
-      echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID"
-      hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+      snapshot_dir="${MODEL_DIR:-$HF_HOME/hub/$MODEL_ID}"
+      echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID into $snapshot_dir"
+      hf_download "$MODEL_ID" --local-dir "$snapshot_dir"
     fi
     ;;
   eliza-small)
@@ -73,8 +74,9 @@ case "$SERVICE" in
         --include "${MMPROJ_FILE:-mmproj-BF16.gguf}" \
         --local-dir "$MODEL_DIR"
     else
-      echo "Downloading/syncing vLLM model snapshot: $MODEL_ID"
-      hf_download "$MODEL_ID" --local-dir "$HF_HOME/hub/$MODEL_ID"
+      snapshot_dir="${MODEL_DIR:-$HF_HOME/hub/$MODEL_ID}"
+      echo "Downloading/syncing model snapshot: $MODEL_ID into $snapshot_dir"
+      hf_download "$MODEL_ID" --local-dir "$snapshot_dir"
     fi
     ;;
   stt)
