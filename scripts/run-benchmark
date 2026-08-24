@@ -37,7 +37,7 @@ case "$1" in
     ;;
   token-generation)
     shift
-    exec "$SUITE_DIR/token-generation" "$@"
+    exec "$SUITE_DIR/stream-throughput" "$@"
     ;;
   voice-latency)
     shift
@@ -49,7 +49,7 @@ case "$1" in
     ;;
   all)
     shift
-    "$SUITE_DIR/token-generation" eliza-medium "$@"
+    "$SUITE_DIR/stream-throughput" eliza-medium "$@"
     "$SUITE_DIR/memory-footprint" eliza-medium "$@"
     "$SUITE_DIR/voice-latency" eliza-small "$@"
     ;;
