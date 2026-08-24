@@ -22,6 +22,24 @@ class SystemStats:
     disk_percent: float
     model_home_used_bytes: int
 
+
+def format_gpu_status(stats: SystemStats) -> str:
+    if not stats.gpu_present:
+        return "GPU0 N/A"
+
+    details: list[str] = []
+    if stats.gpu_memory_supported and stats.gpu_memory_total > 0:
+        used_gib = stats.gpu_memory_used / 1024
+        total_gib = stats.gpu_memory_total / 1024
+        details.append(f"mem {used_gib:.1f}/{total_gib:.0f} GiB")
+    else:
+        details.append("mem n/s")
+    if stats.gpu_util_percent > 0:
+        details.append(f"util {stats.gpu_util_percent:.0f}%")
+    if stats.gpu_temp_c > 0:
+        details.append(f"temp {stats.gpu_temp_c:.0f}C")
+    return f"GPU0 {' '.join(details)} ({stats.gpu_name})"
+
 class MonitorEngine:
     def __init__(self, root_dir: pathlib.Path):
         self.root_dir = root_dir
@@ -143,10 +161,16 @@ class MonitorEngine:
 
     def get_stats(self) -> SystemStats:
         cpu = psutil.cpu_percent(interval=0)
-        mem = psutil.virtual_memory().percent
+        virtual_memory = psutil.virtual_memory()
+        mem = virtual_memory.percent
         disk_usage = psutil.disk_usage("/")
 
         gpu_name, gpu_present, gpu_memory_supported, gpu_used, gpu_total, gpu_util, gpu_temp = self._query_gpu0_stats()
+        if gpu_present and not gpu_memory_supported and "GB10" in gpu_name.upper():
+            mib = 1024 * 1024
+            gpu_used = (virtual_memory.total - virtual_memory.available) / mib
+            gpu_total = virtual_memory.total / mib
+            gpu_memory_supported = gpu_total > 0
 
         model_home = self.model_home
         model_home_used = 0
