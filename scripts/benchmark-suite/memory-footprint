@@ -16,6 +16,7 @@ MAX_TOKENS="64"
 SAMPLE_COUNT="3"
 SAMPLE_INTERVAL="1"
 OUTPUT_JSON=""
+FORCE="false"
 
 if [[ -z "$SERVICE" || "$SERVICE" == "-h" || "$SERVICE" == "--help" ]]; then
   cat <<USAGE
@@ -29,6 +30,7 @@ Options:
   --samples <n>                nvidia-smi samples per snapshot (default: 3)
   --interval <sec>             Seconds between samples (default: 1)
   --output-json <path>         Explicit output path (default: benchmarks/results/...)
+  --force                      Skip the running-model consistency check
 
 Examples:
   ./scripts/run-benchmark memory-footprint eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
@@ -67,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_JSON="${2:-}"
       shift 2
       ;;
+    --force)
+      FORCE="true"
+      shift
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 2
@@ -95,8 +101,22 @@ if [[ "$SERVICE" != "eliza-small" && "$SERVICE" != "eliza-medium" ]]; then
   exit 2
 fi
 
-base_url="$(service_base_url)"
-model="$(service_model_name)"
+source_profile
+base_url="http://127.0.0.1:${PORT}/v1"
+model="${MODEL_NAME:-${MODEL_ID:-${MODEL_FILE:-local-model}}}"
+
+if [[ "$FORCE" != "true" ]]; then
+  expected_models=(--expected "$model")
+  if [[ -n "${MODEL_FILE:-}" ]]; then
+    expected_models+=("--expected" "$(basename "$MODEL_FILE")")
+  fi
+  "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/verify_service_model.py" \
+    --base-url "$base_url" \
+    --service "$SERVICE" \
+    --profile "${PROFILE:-default}" \
+    "${expected_models[@]}"
+fi
+
 timestamp="$(date +%Y%m%d-%H%M%S)"
 profile_slug="${PROFILE:-default}"
 profile_slug="${profile_slug//\//-}"
@@ -106,10 +126,57 @@ if [[ -z "$OUTPUT_JSON" ]]; then
 fi
 mkdir -p "$(dirname "$OUTPUT_JSON")"
 
+detect_memory_source() {
+  local value
+  value="$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  if [[ "$value" =~ ^[0-9]+$ ]]; then
+    echo "nvidia-smi"
+  else
+    echo "system-unified"
+  fi
+}
+
+system_memory_mb() {
+  # Prints "<used_mb> <total_mb>" to one decimal place.
+  if command -v free >/dev/null 2>&1; then
+    free -b | awk '/^Mem:/ {printf "%.1f %.1f\n", ($2 - $7) / 1048576, $2 / 1048576}'
+  else
+    awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} END {printf "%.1f %.1f\n", (t - a) / 1024, t / 1024}' /proc/meminfo
+  fi
+}
+
+capture_unified_snapshot() {
+  local output_file="$1"
+  local gpu_name sample_index utilization used_mb total_mb
+  gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 || true)"
+  [[ -n "$gpu_name" ]] || gpu_name="NVIDIA GB10"
+  : >"$output_file"
+  for sample_index in $(seq 1 "$SAMPLE_COUNT"); do
+    read -r used_mb total_mb < <(system_memory_mb)
+    if [[ -z "${used_mb:-}" || -z "${total_mb:-}" ]]; then
+      echo "Failed to read system memory (tried 'free -b' and /proc/meminfo)" >&2
+      return 1
+    fi
+    utilization="$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+    [[ "$utilization" =~ ^[0-9]+$ ]] || utilization=0
+    echo "$(date '+%a %b %d %H:%M:%S %Y'),${gpu_name},${used_mb},${total_mb},${utilization}" >>"$output_file"
+    if [[ "$sample_index" -lt "$SAMPLE_COUNT" ]]; then
+      sleep "$SAMPLE_INTERVAL"
+    fi
+  done
+}
+
+MEMORY_SOURCE="$(detect_memory_source)"
+echo "Memory source: $MEMORY_SOURCE"
+
 capture_snapshot() {
   local label="$1"
   local output_file="$2"
-  nvidia-smi --query-gpu=timestamp,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits -l "$SAMPLE_INTERVAL" -c "$SAMPLE_COUNT" >"$output_file"
+  if [[ "$MEMORY_SOURCE" == "nvidia-smi" ]]; then
+    nvidia-smi --query-gpu=timestamp,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits -l "$SAMPLE_INTERVAL" -c "$SAMPLE_COUNT" >"$output_file"
+  else
+    capture_unified_snapshot "$output_file"
+  fi
   echo "Captured $label snapshot: $output_file"
 }
 
@@ -158,6 +225,7 @@ python_args=(
   "$SERVICE"
   "${PROFILE:-default}"
   "$model"
+  "$MEMORY_SOURCE"
   "$baseline_csv"
   "$post_load_csv"
   "$warmup_json"
@@ -166,70 +234,6 @@ for item in "${context_results_lines[@]}"; do
   python_args+=("$item")
 done
 
-"$BASE_VENV/bin/python" - "${python_args[@]}" <<'PY'
-import csv
-import json
-import pathlib
-import statistics
-import sys
-
-output = pathlib.Path(sys.argv[1])
-service = sys.argv[2]
-profile = sys.argv[3]
-model = sys.argv[4]
-baseline_csv = pathlib.Path(sys.argv[5])
-post_load_csv = pathlib.Path(sys.argv[6])
-warmup_json = pathlib.Path(sys.argv[7])
-context_specs = sys.argv[8:]
-
-def summarize_csv(path: pathlib.Path) -> dict:
-    rows = []
-    with path.open("r", encoding="utf-8") as fh:
-        reader = csv.reader(fh)
-        for row in reader:
-            if len(row) < 5:
-                continue
-            rows.append(
-                {
-                    "timestamp": row[0].strip(),
-                    "name": row[1].strip(),
-                    "memory_used_mb": float(row[2].strip()),
-                    "memory_total_mb": float(row[3].strip()),
-                    "utilization_gpu_pct": float(row[4].strip()),
-                }
-            )
-    used = [r["memory_used_mb"] for r in rows]
-    util = [r["utilization_gpu_pct"] for r in rows]
-    return {
-        "samples": rows,
-        "memory_used_mb_mean": statistics.fmean(used) if used else 0.0,
-        "memory_used_mb_max": max(used) if used else 0.0,
-        "utilization_gpu_pct_mean": statistics.fmean(util) if util else 0.0,
-        "utilization_gpu_pct_max": max(util) if util else 0.0,
-    }
-
-report = {
-    "service": service,
-    "profile": profile,
-    "model": model,
-    "baseline": summarize_csv(baseline_csv),
-    "post_load": summarize_csv(post_load_csv),
-    "warmup": json.loads(warmup_json.read_text(encoding="utf-8")),
-    "contexts": [],
-}
-
-for spec in context_specs:
-    tokens, req_path, snap_path = spec.split(":", 2)
-    report["contexts"].append(
-        {
-            "requested_tokens": int(tokens),
-            "request": json.loads(pathlib.Path(req_path).read_text(encoding="utf-8")),
-            "memory_snapshot": summarize_csv(pathlib.Path(snap_path)),
-        }
-    )
-
-output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-print(json.dumps(report, indent=2))
-PY
+"$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/benchmark_report.py" "${python_args[@]}"
 
 echo "Saved benchmark: $OUTPUT_JSON"

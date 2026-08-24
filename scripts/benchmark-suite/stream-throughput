@@ -19,6 +19,7 @@ Options:
   --prompt-file <path>   Read prompt from file
   --show-raw             Print raw SSE events before the JSON summary
   --show-deltas          Print parsed content/reasoning deltas
+  --force                Skip the running-model consistency check
 
 Examples:
   ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k --show-raw
@@ -34,6 +35,7 @@ PROMPT=""
 PROMPT_FILE=""
 SHOW_RAW="false"
 SHOW_DELTAS="false"
+FORCE="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       SHOW_DELTAS="true"
       shift
       ;;
+    --force)
+      FORCE="true"
+      shift
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 2
@@ -78,8 +84,9 @@ if [[ -n "$PROFILE" ]]; then
 fi
 parse_service_profile "$@"
 
-base_url="$(service_base_url)"
-model="$(service_model_name)"
+source_profile
+base_url="http://127.0.0.1:${PORT}/v1"
+model="${MODEL_NAME:-${MODEL_ID:-${MODEL_FILE:-local-model}}}"
 timestamp="$(date +%Y%m%d-%H%M%S)"
 profile_slug="${PROFILE:-default}"
 profile_slug="${profile_slug//\//-}"
@@ -88,6 +95,18 @@ output="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-stream-${timesta
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
   echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2
   exit 1
+fi
+
+if [[ "$FORCE" != "true" ]]; then
+  expected_models=(--expected "$model")
+  if [[ -n "${MODEL_FILE:-}" ]]; then
+    expected_models+=("--expected" "$(basename "$MODEL_FILE")")
+  fi
+  "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/verify_service_model.py" \
+    --base-url "$base_url" \
+    --service "$SERVICE" \
+    --profile "${PROFILE:-default}" \
+    "${expected_models[@]}"
 fi
 
 args=(

@@ -1,0 +1,283 @@
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import pathlib
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
+
+
+ROOT_DIR = pathlib.Path(__file__).resolve().parents[1]
+
+
+def load_module(name: str, relative_path: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT_DIR / relative_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+verify_service_model = load_module("verify_service_model", "scripts/lib/verify_service_model.py")
+benchmark_report = load_module("benchmark_report", "scripts/lib/benchmark_report.py")
+voice_test = load_module("voice_test_client", "clients/openai/voice_test.py")
+
+
+class MatchExpectedTest(unittest.TestCase):
+    def test_exact_id_match(self) -> None:
+        self.assertEqual(
+            verify_service_model.match_expected(["eliza-medium"], ["eliza-medium"]),
+            "eliza-medium",
+        )
+
+    def test_path_suffix_match_for_llamacpp_model_file(self) -> None:
+        served = ["/home/user/models/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf"]
+        self.assertEqual(
+            verify_service_model.match_expected(
+                served, ["qwen3.8-27b-ud-q4-k-xl", "Qwen3.8-27B-UD-Q4_K_XL.gguf"]
+            ),
+            "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+        )
+
+    def test_no_match_returns_none(self) -> None:
+        self.assertIsNone(
+            verify_service_model.match_expected(["other-model"], ["eliza-medium"])
+        )
+
+    def test_blank_candidates_are_skipped(self) -> None:
+        self.assertIsNone(verify_service_model.match_expected(["a"], ["", "  "]))
+
+
+class FetchModelIdsTest(unittest.TestCase):
+    def response_mock(self, status: int, body: bytes):
+        response = unittest.mock.MagicMock()
+        response.status = status
+        response.read.return_value = body
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        return response
+
+    def test_unreachable_service_is_down(self) -> None:
+        with patch.object(
+            verify_service_model.urllib.request,
+            "urlopen",
+            side_effect=OSError("connection refused"),
+        ):
+            status, ids, detail = verify_service_model.fetch_model_ids("http://127.0.0.1:9/v1")
+        self.assertEqual(status, "down")
+        self.assertEqual(ids, [])
+        self.assertIn("connection refused", detail)
+
+    def test_http_error_is_down_with_status(self) -> None:
+        with patch.object(
+            verify_service_model.urllib.request,
+            "urlopen",
+            return_value=self.response_mock(503, b"{}"),
+        ):
+            status, ids, detail = verify_service_model.fetch_model_ids("http://127.0.0.1:9/v1")
+        self.assertEqual(status, "down")
+        self.assertEqual(detail, "HTTP 503")
+
+    def test_standard_models_payload(self) -> None:
+        body = json.dumps({"data": [{"id": "eliza-medium"}]}).encode("utf-8")
+        with patch.object(
+            verify_service_model.urllib.request,
+            "urlopen",
+            return_value=self.response_mock(200, body),
+        ):
+            status, ids, detail = verify_service_model.fetch_model_ids("http://127.0.0.1:9/v1")
+        self.assertEqual(status, "ok")
+        self.assertEqual(ids, ["eliza-medium"])
+        self.assertEqual(detail, "")
+
+    def test_empty_model_list_is_unavailable(self) -> None:
+        with patch.object(
+            verify_service_model.urllib.request,
+            "urlopen",
+            return_value=self.response_mock(200, b'{"data":[]}'),
+        ):
+            status, ids, _ = verify_service_model.fetch_model_ids("http://127.0.0.1:9/v1")
+        self.assertEqual(status, "unavailable")
+        self.assertEqual(ids, [])
+
+
+class GuardMainTest(unittest.TestCase):
+    def run_main(
+        self,
+        fetch_result: tuple[str, list[str], str],
+        *argv: str,
+    ) -> tuple[int, str]:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(
+            verify_service_model,
+            "fetch_model_ids",
+            return_value=fetch_result,
+        ):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = verify_service_model.main(list(argv))
+        return code, stderr.getvalue()
+
+    def test_down_exits_1_with_start_hint(self) -> None:
+        code, err = self.run_main(
+            ("down", [], "connection refused"),
+            "--base-url", "http://127.0.0.1:8001/v1",
+            "--expected", "eliza-medium",
+            "--service", "eliza-medium",
+            "--profile", "medium/qwen3.8-27b-fp8-sglang-256k",
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("not ready", err)
+        self.assertIn("./scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k", err)
+
+    def test_mismatch_exits_2_with_restart_hint(self) -> None:
+        code, err = self.run_main(
+            ("ok", ["gemma-small"], ""),
+            "--base-url", "http://127.0.0.1:8002/v1",
+            "--expected", "eliza-small",
+            "--service", "eliza-small",
+            "--profile", "small/gemma4-e4b-q4-llamacpp-128k",
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("model mismatch", err)
+        self.assertIn("./scripts/restart eliza-small --profile small/gemma4-e4b-q4-llamacpp-128k", err)
+
+    def test_match_exits_0(self) -> None:
+        code, err = self.run_main(
+            ("ok", ["eliza-medium"], ""),
+            "--base-url", "http://127.0.0.1:8001/v1",
+            "--expected", "eliza-medium",
+            "--service", "eliza-medium",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    def test_comma_separated_expected_values(self) -> None:
+        code, _ = self.run_main(
+            ("ok", ["/models/Qwen.gguf"], ""),
+            "--base-url", "http://127.0.0.1:8001/v1",
+            "--expected", "name-alias,Qwen.gguf",
+            "--service", "eliza-medium",
+        )
+        self.assertEqual(code, 0)
+
+
+class SummarizeCsvTest(unittest.TestCase):
+    def write_csv(self, temporary_dir: str, name: str, lines: list[str]) -> pathlib.Path:
+        path = pathlib.Path(temporary_dir) / name
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_summarizes_numeric_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            csv_path = self.write_csv(
+                temporary_dir,
+                "snap.csv",
+                [
+                    "Thu Aug 21 10:00:00 2026,NVIDIA GB10,1000.0,120000.0,10",
+                    "Thu Aug 21 10:00:01 2026,NVIDIA GB10,1200.0,120000.0,30",
+                ],
+            )
+            summary = benchmark_report.summarize_csv(csv_path)
+        self.assertEqual(summary["sample_count"], 2)
+        self.assertEqual(summary["memory_total_mb"], 120000.0)
+        self.assertEqual(summary["memory_used_mb_mean"], 1100.0)
+        self.assertEqual(summary["memory_used_mb_min"], 1000.0)
+        self.assertEqual(summary["memory_used_mb_max"], 1200.0)
+        self.assertEqual(summary["utilization_gpu_pct_max"], 30.0)
+
+    def test_skips_na_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            csv_path = self.write_csv(
+                temporary_dir,
+                "snap.csv",
+                [
+                    "Thu Aug 21 10:00:00 2026,NVIDIA GB10,N/A,N/A,0",
+                    "Thu Aug 21 10:00:01 2026,NVIDIA GB10,1500.5,120000.0,20",
+                    "short,row",
+                ],
+            )
+            summary = benchmark_report.summarize_csv(csv_path)
+        self.assertEqual(summary["sample_count"], 1)
+        self.assertEqual(summary["memory_used_mb_mean"], 1500.5)
+
+    def test_all_invalid_rows_yield_zeros(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            csv_path = self.write_csv(
+                temporary_dir, "snap.csv", ["Thu Aug 21 10:00:00 2026,NVIDIA GB10,N/A,N/A,0"]
+            )
+            summary = benchmark_report.summarize_csv(csv_path)
+        self.assertEqual(summary["sample_count"], 0)
+        self.assertEqual(summary["memory_used_mb_mean"], 0.0)
+
+
+class ReportMainTest(unittest.TestCase):
+    def test_main_writes_report_with_memory_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = pathlib.Path(temporary_dir)
+            output = root / "report.json"
+            baseline = root / "baseline.csv"
+            post_load = root / "post-load.csv"
+            warmup = root / "warmup.json"
+            context_request = root / "context-8192.json"
+            context_snapshot = root / "context-8192.csv"
+
+            baseline.write_text("ts,GPU,100.0,120000.0,5\n", encoding="utf-8")
+            post_load.write_text("ts,GPU,900.0,120000.0,40\n", encoding="utf-8")
+            warmup.write_text(json.dumps({"elapsed_seconds": 1.5}), encoding="utf-8")
+            context_request.write_text(json.dumps({"requested_tokens_approx": 8192}), encoding="utf-8")
+            context_snapshot.write_text("ts,GPU,950.0,120000.0,45\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = benchmark_report.main(
+                    [
+                        str(output),
+                        "eliza-medium",
+                        "medium/test-profile",
+                        "eliza-medium",
+                        "system-unified",
+                        str(baseline),
+                        str(post_load),
+                        str(warmup),
+                        f"8192:{context_request}:{context_snapshot}",
+                    ]
+                )
+            self.assertEqual(code, 0)
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(report["service"], "eliza-medium")
+        self.assertEqual(report["memory_source"], "system-unified")
+        self.assertEqual(report["baseline"]["memory_used_mb_mean"], 100.0)
+        self.assertEqual(report["post_load"]["memory_used_mb_mean"], 900.0)
+        self.assertEqual(report["warmup"]["elapsed_seconds"], 1.5)
+        self.assertEqual(report["contexts"][0]["requested_tokens"], 8192)
+        self.assertEqual(report["contexts"][0]["memory_snapshot"]["memory_used_mb_mean"], 950.0)
+
+    def test_main_requires_minimum_args(self) -> None:
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            code = benchmark_report.main(["only-one-arg"])
+        self.assertEqual(code, 2)
+        self.assertIn("usage:", stderr.getvalue())
+
+
+class VoiceSummarizeTest(unittest.TestCase):
+    def test_summarize_latencies(self) -> None:
+        summary = voice_test.summarize_latencies([1.0, 2.0, 3.0])
+        self.assertEqual(summary["round_count"], 3)
+        self.assertEqual(summary["average_seconds"], 2.0)
+        self.assertEqual(summary["median_seconds"], 2.0)
+        self.assertEqual(summary["min_seconds"], 1.0)
+        self.assertEqual(summary["max_seconds"], 3.0)
+
+    def test_summarize_empty(self) -> None:
+        summary = voice_test.summarize_latencies([])
+        self.assertEqual(summary["round_count"], 0)
+        self.assertEqual(summary["average_seconds"], 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
