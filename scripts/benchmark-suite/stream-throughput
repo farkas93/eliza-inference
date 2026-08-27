@@ -112,6 +112,8 @@ fi
 args=(
   --base-url "$base_url"
   --model "$model"
+  --service "$SERVICE"
+  --profile "${PROFILE:-default}"
   --max-tokens "$MAX_TOKENS"
   --context-tokens "$CONTEXT_TOKENS"
   --output-json "$output"
@@ -133,3 +135,10 @@ fi
 "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/stream_inspect.py" "${args[@]}"
 
 echo "Saved benchmark: $output"
+
+"$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/benchmark_ledger.py" add \
+  --ledger "$ROOT_DIR/benchmarks/results/runs.jsonl" \
+  --type "token-generation" \
+  --service "$SERVICE" \
+  --profile "${PROFILE:-default}" \
+  --result-json "$output" || echo "warning: failed to append benchmark ledger entry" >&2

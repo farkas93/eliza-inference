@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -23,7 +24,11 @@ def load_module(name: str, relative_path: str):
 
 verify_service_model = load_module("verify_service_model", "scripts/lib/verify_service_model.py")
 benchmark_report = load_module("benchmark_report", "scripts/lib/benchmark_report.py")
+benchmark_ledger = load_module("benchmark_ledger", "scripts/lib/benchmark_ledger.py")
+sys.modules["benchmark_ledger"] = benchmark_ledger
+benchmark_compare = load_module("benchmark_compare", "scripts/lib/benchmark_compare.py")
 voice_test = load_module("voice_test_client", "clients/openai/voice_test.py")
+stream_inspect = load_module("stream_inspect_client", "clients/openai/stream_inspect.py")
 
 
 class MatchExpectedTest(unittest.TestCase):
@@ -277,6 +282,414 @@ class VoiceSummarizeTest(unittest.TestCase):
         summary = voice_test.summarize_latencies([])
         self.assertEqual(summary["round_count"], 0)
         self.assertEqual(summary["average_seconds"], 0.0)
+
+
+class LedgerExtractTest(unittest.TestCase):
+    def test_token_generation_metrics(self) -> None:
+        metrics = benchmark_ledger.extract_metrics(
+            "token-generation",
+            {
+                "tokens_per_second_est": 132.4,
+                "time_to_first_content_seconds": 0.41,
+                "elapsed_seconds": 2.01,
+                "output_tokens_est": 256,
+                "saw_reasoning_channel": True,
+            },
+        )
+        self.assertEqual(metrics["tokens_per_second_est"], 132.4)
+        self.assertEqual(metrics["time_to_first_content_seconds"], 0.41)
+        self.assertEqual(metrics["elapsed_seconds"], 2.01)
+        self.assertEqual(metrics["output_tokens_est"], 256.0)
+        self.assertIs(metrics["saw_reasoning_channel"], True)
+
+    def test_memory_footprint_metrics_with_delta(self) -> None:
+        metrics = benchmark_ledger.extract_metrics(
+            "memory-footprint",
+            {
+                "memory_source": "system-unified",
+                "baseline": {"memory_used_mb_mean": 1000.0},
+                "post_load": {"memory_used_mb_mean": 2500.0},
+                "contexts": [
+                    {"requested_tokens": 8192, "memory_snapshot": {"memory_used_mb_max": 3000.0}},
+                    {"requested_tokens": 32768, "memory_snapshot": {"memory_used_mb_max": 3400.0}},
+                ],
+            },
+        )
+        self.assertEqual(metrics["memory_source"], "system-unified")
+        self.assertEqual(metrics["baseline_used_mb"], 1000.0)
+        self.assertEqual(metrics["post_load_used_mb"], 2500.0)
+        self.assertEqual(metrics["load_delta_mb"], 1500.0)
+        self.assertEqual(metrics["max_context_used_mb"], 3400.0)
+        self.assertEqual(metrics["max_context_tokens"], 32768.0)
+
+    def test_memory_footprint_metrics_without_contexts(self) -> None:
+        metrics = benchmark_ledger.extract_metrics(
+            "memory-footprint",
+            {"baseline": {}, "post_load": {}, "contexts": []},
+        )
+        self.assertIsNone(metrics["baseline_used_mb"])
+        self.assertIsNone(metrics["load_delta_mb"])
+        self.assertEqual(metrics["max_context_used_mb"], 0.0)
+        self.assertEqual(metrics["max_context_tokens"], 0.0)
+
+    def test_voice_latency_metrics(self) -> None:
+        metrics = benchmark_ledger.extract_metrics(
+            "voice-latency",
+            {"median_seconds": 0.42, "average_seconds": 0.44, "round_count": 3},
+        )
+        self.assertEqual(metrics["median_seconds"], 0.42)
+        self.assertEqual(metrics["average_seconds"], 0.44)
+        self.assertEqual(metrics["round_count"], 3.0)
+
+    def test_unknown_type_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            benchmark_ledger.extract_metrics("quantum-flux", {})
+
+
+class LedgerAppendTest(unittest.TestCase):
+    def test_append_creates_and_extends_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            ledger = pathlib.Path(temporary_dir) / "runs.jsonl"
+            record_a = benchmark_ledger.build_record(
+                "voice-latency", "eliza-small", "small/a", {"model": "a"}
+            )
+            record_b = benchmark_ledger.build_record(
+                "voice-latency", "eliza-small", "small/b", {"model": "b"}
+            )
+            benchmark_ledger.append_run(ledger, record_a)
+            benchmark_ledger.append_run(ledger, record_b)
+
+            lines = ledger.read_text(encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(lines), 2)
+        first, second = (json.loads(line) for line in lines)
+        self.assertEqual(first["profile"], "small/a")
+        self.assertEqual(first["type"], "voice-latency")
+        self.assertIn("timestamp", first)
+        self.assertEqual(first["result_file"], "")
+        self.assertEqual(second["profile"], "small/b")
+        self.assertEqual(second["model"], "b")
+
+    def test_build_record_prefers_explicit_identity(self) -> None:
+        record = benchmark_ledger.build_record(
+            "token-generation",
+            "eliza-medium",
+            "medium/explicit",
+            {"service": "json-service", "profile": "json-profile", "model": "m"},
+            result_file="/tmp/dir/some-result.json",
+            timestamp="2026-08-24T12:00:00+00:00",
+        )
+        self.assertEqual(record["service"], "eliza-medium")
+        self.assertEqual(record["profile"], "medium/explicit")
+        self.assertEqual(record["result_file"], "some-result.json")
+        self.assertEqual(record["timestamp"], "2026-08-24T12:00:00+00:00")
+
+
+class CompareTimestampTest(unittest.TestCase):
+    def test_compact_local_format(self) -> None:
+        self.assertEqual(benchmark_compare.normalize_timestamp("20260824-122902"), "20260824122902")
+
+    def test_compact_utc_format(self) -> None:
+        self.assertEqual(benchmark_compare.normalize_timestamp("20260824T123106"), "20260824123106")
+
+    def test_iso_with_timezone(self) -> None:
+        self.assertEqual(
+            benchmark_compare.normalize_timestamp("2026-08-24T12:34:56+00:00"),
+            "20260824123456",
+        )
+
+
+class CompareLoadTest(unittest.TestCase):
+    def test_load_ledger_skips_malformed_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            ledger = pathlib.Path(temporary_dir) / "runs.jsonl"
+            good = {
+                "service": "eliza-small",
+                "profile": "small/a",
+                "type": "voice-latency",
+                "timestamp": "2026-08-24T12:00:00+00:00",
+                "model": "a",
+                "metrics": {"median_seconds": 0.5},
+            }
+            ledger.write_text(
+                json.dumps(good) + "\nnot-json\n" + json.dumps({"type": "unknown", "metrics": {}}) + "\n",
+                encoding="utf-8",
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                runs = benchmark_compare.load_ledger(ledger)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["profile"], "small/a")
+        self.assertIn("malformed", stderr.getvalue())
+
+    def test_scan_result_files_parses_legacy_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir)
+            (results_dir / "eliza-medium-medium-qwen3.8-27b-fp8-sglang-256k-stream-20260824-120000.json").write_text(
+                json.dumps({"model": "eliza-medium", "tokens_per_second_est": 100.0}),
+                encoding="utf-8",
+            )
+            (results_dir / "eliza-small-gemma3-4b-q4-llamacpp-8k-voice-latency-20260824T120100.json").write_text(
+                json.dumps({"model": "gemma", "median_seconds": 0.5, "average_seconds": 0.5, "round_count": 3}),
+                encoding="utf-8",
+            )
+            runs = benchmark_compare.scan_result_files(results_dir)
+
+        by_type = {run["type"]: run for run in runs}
+        stream = by_type["token-generation"]
+        self.assertEqual(stream["service"], "eliza-medium")
+        self.assertEqual(stream["profile"], "medium/qwen3.8-27b-fp8-sglang-256k")
+        self.assertEqual(stream["metrics"]["tokens_per_second_est"], 100.0)
+        voice = by_type["voice-latency"]
+        self.assertEqual(voice["service"], "eliza-small")
+        self.assertEqual(voice["profile"], "small/gemma3-4b-q4-llamacpp-8k")
+        self.assertEqual(voice["metrics"]["median_seconds"], 0.5)
+
+    def test_scan_prefers_json_identity_over_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir)
+            (results_dir / "eliza-medium-odd-slug-stream-20260824-120000.json").write_text(
+                json.dumps(
+                    {
+                        "service": "eliza-medium",
+                        "profile": "medium/real-profile",
+                        "model": "m",
+                        "tokens_per_second_est": 50.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            runs = benchmark_compare.scan_result_files(results_dir)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["profile"], "medium/real-profile")
+
+
+class CompareSelectTest(unittest.TestCase):
+    def runs(self):
+        return [
+            {
+                "service": "eliza-small",
+                "profile": "small/a",
+                "type": "voice-latency",
+                "timestamp": "20260824-100000",
+                "metrics": {"median_seconds": 1.0},
+            },
+            {
+                "service": "eliza-small",
+                "profile": "small/a",
+                "type": "voice-latency",
+                "timestamp": "20260824-110000",
+                "metrics": {"median_seconds": 0.5},
+            },
+            {
+                "service": "eliza-small",
+                "profile": "small/b",
+                "type": "voice-latency",
+                "timestamp": "20260824-090000",
+                "metrics": {"median_seconds": 2.0},
+            },
+        ]
+
+    def test_latest_per_profile_is_kept(self) -> None:
+        selected = benchmark_compare.select_runs(self.runs(), all_runs=False)
+        self.assertEqual(len(selected), 2)
+        by_profile = {run["profile"]: run for run in selected}
+        self.assertEqual(by_profile["small/a"]["metrics"]["median_seconds"], 0.5)
+        self.assertEqual(by_profile["small/b"]["metrics"]["median_seconds"], 2.0)
+
+    def test_all_runs_keeps_everything(self) -> None:
+        selected = benchmark_compare.select_runs(self.runs(), all_runs=True)
+        self.assertEqual(len(selected), 3)
+
+
+class CompareRenderTest(unittest.TestCase):
+    def test_render_tables_and_blank_cells(self) -> None:
+        runs = [
+            {
+                "service": "eliza-medium",
+                "profile": "medium/a",
+                "type": "token-generation",
+                "timestamp": "2026-08-24T12:00:00+00:00",
+                "model": "a",
+                "result_file": "a-stream.json",
+                "metrics": {
+                    "tokens_per_second_est": 100.0,
+                    "time_to_first_content_seconds": None,
+                    "elapsed_seconds": 2.0,
+                    "output_tokens_est": 256.0,
+                    "saw_reasoning_channel": False,
+                },
+            },
+            {
+                "service": "eliza-small",
+                "profile": "small/a",
+                "type": "voice-latency",
+                "timestamp": "2026-08-24T12:00:00+00:00",
+                "model": "a",
+                "result_file": "a-voice.json",
+                "metrics": {"median_seconds": 0.5, "average_seconds": 0.5, "round_count": 3.0},
+            },
+        ]
+        markdown = benchmark_compare.render_markdown(runs, False, "ledger `runs.jsonl` (2 runs)", pathlib.Path("benchmarks/results"))
+
+        self.assertIn("# Benchmark Results", markdown)
+        self.assertIn("## eliza-medium", markdown)
+        self.assertIn("## eliza-small", markdown)
+        self.assertIn("### Token generation", markdown)
+        self.assertIn("### Voice latency", markdown)
+        self.assertIn("| `medium/a` | 100.0 | - | 2.00 | 256 | no |", markdown)
+        self.assertIn("| `small/a` | 0.500 | 0.500 | 3 |", markdown)
+        self.assertIn("`a-stream.json`", markdown)
+        self.assertIn("./scripts/run-benchmark compare", markdown)
+
+    def test_all_runs_adds_run_time_column(self) -> None:
+        runs = [
+            {
+                "service": "eliza-small",
+                "profile": "small/a",
+                "type": "voice-latency",
+                "timestamp": "20260824T120000",
+                "model": "a",
+                "result_file": "",
+                "metrics": {"median_seconds": 0.5, "average_seconds": 0.5, "round_count": 3.0},
+            }
+        ]
+        markdown = benchmark_compare.render_markdown(runs, True, "scan (1 runs)", pathlib.Path("benchmarks/results"))
+        self.assertIn("| Profile | Run (UTC) | Median (s)", markdown)
+        self.assertIn("2026-08-24 12:00:00", markdown)
+
+
+class CompareMainTest(unittest.TestCase):
+    def test_no_runs_exits_2(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir) / "results"
+            results_dir.mkdir()
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                code = benchmark_compare.main(["--results-dir", str(results_dir)])
+        self.assertEqual(code, 2)
+        self.assertIn("No benchmark runs found", stderr.getvalue())
+
+    def test_end_to_end_ledger_to_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir) / "results"
+            results_dir.mkdir()
+            ledger = results_dir / "runs.jsonl"
+            result_json = results_dir / "run.json"
+            result_json.write_text(
+                json.dumps(
+                    {
+                        "service": "eliza-medium",
+                        "profile": "medium/a",
+                        "model": "a",
+                        "tokens_per_second_est": 99.9,
+                        "elapsed_seconds": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            benchmark_ledger.main(
+                [
+                    "add",
+                    "--ledger", str(ledger),
+                    "--type", "token-generation",
+                    "--service", "eliza-medium",
+                    "--profile", "medium/a",
+                    "--result-json", str(result_json),
+                ]
+            )
+            output = pathlib.Path(temporary_dir) / "RESULTS.md"
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = benchmark_compare.main(
+                    ["--results-dir", str(results_dir), "--output", str(output)]
+                )
+            self.assertEqual(code, 0)
+            markdown = output.read_text(encoding="utf-8")
+        self.assertIn("`medium/a` | 99.9", markdown)
+        self.assertIn("Wrote comparison for 1 runs", stdout.getvalue())
+
+
+class ClientIdentityTest(unittest.TestCase):
+    def test_voice_result_includes_identity(self) -> None:
+        class FakeResponse:
+            def __init__(self, body: bytes):
+                self._body = body
+
+            def read(self) -> bytes:
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        body = json.dumps(
+            {"choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = pathlib.Path(temporary_dir) / "voice.json"
+            with patch.object(
+                voice_test.urllib.request, "urlopen", return_value=FakeResponse(body)
+            ):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    code = voice_test.main(
+                        [
+                            "--base-url", "http://127.0.0.1:9/v1",
+                            "--model", "gemma",
+                            "--service", "eliza-small",
+                            "--profile", "small/gemma4-e2b-q4-llamacpp-8k",
+                            "--rounds", "1",
+                            "--output-json", str(output),
+                        ]
+                    )
+            self.assertEqual(code, 0)
+            result = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(result["service"], "eliza-small")
+        self.assertEqual(result["profile"], "small/gemma4-e2b-q4-llamacpp-8k")
+
+    def test_stream_result_includes_identity(self) -> None:
+        class FakeStream:
+            def __init__(self, lines: list[bytes]):
+                self._lines = list(lines)
+
+            def __iter__(self):
+                return iter(self._lines)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        lines = [
+            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = pathlib.Path(temporary_dir) / "stream.json"
+            with patch.object(
+                stream_inspect.urllib.request, "urlopen", return_value=FakeStream(lines)
+            ):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    code = stream_inspect.main(
+                        [
+                            "--base-url", "http://127.0.0.1:9/v1",
+                            "--model", "eliza-medium",
+                            "--service", "eliza-medium",
+                            "--profile", "medium/qwen3.8-27b-fp8-sglang-256k",
+                            "--max-tokens", "8",
+                            "--output-json", str(output),
+                        ]
+                    )
+            self.assertEqual(code, 0)
+            result = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(result["service"], "eliza-medium")
+        self.assertEqual(result["profile"], "medium/qwen3.8-27b-fp8-sglang-256k")
+        self.assertEqual(result["content_chunks"], 1)
 
 
 if __name__ == "__main__":

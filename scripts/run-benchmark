@@ -14,6 +14,7 @@ Types:
   memory-footprint   GPU memory snapshots with context-loaded requests
   all                Run token-generation + memory-footprint for eliza-medium,
                      then voice-latency for eliza-small
+  compare            Aggregate runs into a curated benchmarks/RESULTS.md table
 
 Examples:
   ./scripts/run-benchmark token-generation eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
@@ -52,6 +53,10 @@ case "$1" in
     "$SUITE_DIR/stream-throughput" eliza-medium "$@"
     "$SUITE_DIR/memory-footprint" eliza-medium "$@"
     "$SUITE_DIR/voice-latency" eliza-small "$@"
+    ;;
+  compare)
+    shift
+    exec "$SUITE_DIR/compare" "$@"
     ;;
   *)
     echo "Unknown benchmark type: $1" >&2

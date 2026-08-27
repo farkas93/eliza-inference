@@ -237,3 +237,10 @@ done
 "$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/benchmark_report.py" "${python_args[@]}"
 
 echo "Saved benchmark: $OUTPUT_JSON"
+
+"$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/benchmark_ledger.py" add \
+  --ledger "$ROOT_DIR/benchmarks/results/runs.jsonl" \
+  --type "memory-footprint" \
+  --service "$SERVICE" \
+  --profile "${PROFILE:-default}" \
+  --result-json "$OUTPUT_JSON" || echo "warning: failed to append benchmark ledger entry" >&2

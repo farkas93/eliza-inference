@@ -80,7 +80,16 @@ output_file="$OUTPUT_DIR/${SERVICE}-${PROFILE##*/}-voice-latency-${timestamp}.js
 "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/voice_test.py" \
   --base-url "$base_url" \
   --model "$model" \
+  --service "$SERVICE" \
+  --profile "${PROFILE:-default}" \
   --rounds "$ROUNDS" \
   --output-json "$output_file"
 
 echo "Results written to: $output_file"
+
+"$BASE_VENV/bin/python" "$ROOT_DIR/scripts/lib/benchmark_ledger.py" add \
+  --ledger "$ROOT_DIR/benchmarks/results/runs.jsonl" \
+  --type "voice-latency" \
+  --service "$SERVICE" \
+  --profile "${PROFILE:-default}" \
+  --result-json "$output_file" || echo "warning: failed to append benchmark ledger entry" >&2

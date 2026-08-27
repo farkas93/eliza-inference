@@ -21,13 +21,15 @@ def summarize_latencies(latencies: list[float]) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Voice LLM latency sanity test.")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--rounds", type=int, default=3)
+    parser.add_argument("--service", default="", help="Service name for result metadata")
+    parser.add_argument("--profile", default="", help="Profile name for result metadata")
     parser.add_argument("--output-json", type=pathlib.Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     rounds: list[dict] = []
     for idx in range(args.rounds):
@@ -58,6 +60,8 @@ def main() -> int:
         rounds.append({"round": idx + 1, "elapsed_seconds": elapsed, "response": content})
 
     result = {
+        "service": args.service,
+        "profile": args.profile,
         "model": args.model,
         "base_url": args.base_url.rstrip("/"),
         "rounds": rounds,

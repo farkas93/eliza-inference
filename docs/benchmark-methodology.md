@@ -64,3 +64,33 @@ The stream benchmark records first-event latency, first-content latency, estimat
 ```
 
 Compare average latency and quality for short spoken-assistant style prompts.
+
+## Comparing results
+
+Every benchmark run appends one normalized record to
+`benchmarks/results/runs.jsonl` (the run ledger) in addition to its per-run
+result JSON. Each record carries the service, profile, benchmark type, model,
+timestamp, and flat metrics for that run.
+
+Aggregate the ledger into a curated comparison with:
+
+```bash
+./scripts/run-benchmark compare
+./scripts/run-benchmark compare --service eliza-medium
+./scripts/run-benchmark compare --all-runs
+```
+
+`compare` keeps the latest run per service/profile/type by default
+(`--all-runs` shows every run) and writes a markdown table per benchmark type
+to `benchmarks/RESULTS.md` by default (`--output` overrides). If no ledger
+exists it falls back to scanning the per-run result JSON files. The curated
+`benchmarks/RESULTS.md` is meant to be committed so profile comparisons are
+reviewable; the raw JSON results and the ledger stay local.
+
+To refresh the committed results on the DGX:
+
+```bash
+./scripts/run-benchmark all
+./scripts/run-benchmark compare
+git diff benchmarks/RESULTS.md
+```

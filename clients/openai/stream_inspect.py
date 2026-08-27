@@ -57,7 +57,7 @@ def print_raw_event(event: dict[str, Any], max_chars: int) -> None:
     print(f"raw_event={serialized}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Inspect streaming responses and estimate tokens/sec for an OpenAI-compatible endpoint."
     )
@@ -80,8 +80,10 @@ def main() -> int:
     parser.add_argument("--show-raw", action="store_true")
     parser.add_argument("--raw-max-chars", type=int, default=1200)
     parser.add_argument("--show-deltas", action="store_true")
+    parser.add_argument("--service", default="", help="Service name for result metadata")
+    parser.add_argument("--profile", default="", help="Profile name for result metadata")
     parser.add_argument("--output-json", type=pathlib.Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.prompt_file:
         prompt = args.prompt_file.read_text(encoding="utf-8")
@@ -182,6 +184,8 @@ def main() -> int:
     )
 
     result = {
+        "service": args.service,
+        "profile": args.profile,
         "model": args.model,
         "base_url": args.base_url.rstrip("/"),
         "prompt_chars": len(prompt),
