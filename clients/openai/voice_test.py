@@ -3,18 +3,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
+import statistics
+import sys
 import time
+import urllib.error
 import urllib.request
 
 
-def main() -> int:
+def summarize_latencies(latencies: list[float]) -> dict:
+    return {
+        "round_count": len(latencies),
+        "average_seconds": statistics.fmean(latencies) if latencies else 0.0,
+        "median_seconds": statistics.median(latencies) if latencies else 0.0,
+        "min_seconds": min(latencies) if latencies else 0.0,
+        "max_seconds": max(latencies) if latencies else 0.0,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Voice LLM latency sanity test.")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--rounds", type=int, default=3)
-    args = parser.parse_args()
+    parser.add_argument("--service", default="", help="Service name for result metadata")
+    parser.add_argument("--profile", default="", help="Profile name for result metadata")
+    parser.add_argument("--output-json", type=pathlib.Path)
+    args = parser.parse_args(argv)
 
-    latencies: list[float] = []
+    rounds: list[dict] = []
     for idx in range(args.rounds):
         payload = {
             "model": args.model,
@@ -31,15 +48,33 @@ def main() -> int:
             headers={"Content-Type": "application/json"},
         )
         started = time.perf_counter()
-        with urllib.request.urlopen(req, timeout=120) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=120) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError) as exc:
+            print(f"round {idx + 1} failed: {exc}", file=sys.stderr)
+            return 1
         elapsed = time.perf_counter() - started
-        latencies.append(elapsed)
         content = data["choices"][0]["message"].get("content", "").strip()
-        print(f"round={idx + 1} elapsed_seconds={elapsed:.3f} response={content}")
+        print(f"round={idx + 1} elapsed_seconds={elapsed:.3f} response={content}", file=sys.stderr)
+        rounds.append({"round": idx + 1, "elapsed_seconds": elapsed, "response": content})
 
-    avg = sum(latencies) / len(latencies)
-    print(f"average_seconds={avg:.3f}")
+    result = {
+        "service": args.service,
+        "profile": args.profile,
+        "model": args.model,
+        "base_url": args.base_url.rstrip("/"),
+        "rounds": rounds,
+        **summarize_latencies([round_entry["elapsed_seconds"] for round_entry in rounds]),
+    }
+
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    if args.output_json:
+        args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        args.output_json.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     return 0
 
 

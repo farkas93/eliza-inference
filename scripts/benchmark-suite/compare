@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND_NAME="compare"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+RESULTS_DIR="$ROOT_DIR/benchmarks/results"
+OUTPUT=""
+SERVICE_FILTER=""
+PROFILE_FILTER=""
+ALL_RUNS="false"
+
+print_usage() {
+  cat <<USAGE
+Usage: ./scripts/run-benchmark compare [options]
+
+Aggregates benchmark runs from benchmarks/results/runs.jsonl (falling back
+to per-run result JSON files) and writes a curated markdown comparison.
+Keeps the latest run per service/profile/type by default.
+
+Options:
+  --results-dir <dir>  Results directory (default: benchmarks/results)
+  --output <path>      Output markdown path (default: benchmarks/RESULTS.md)
+  --service <name>     Only include this service (e.g. eliza-medium)
+  --profile <name>     Only include this profile
+  --all-runs           Show every run instead of the latest per profile
+  -h, --help           Show this help
+
+Examples:
+  ./scripts/run-benchmark compare
+  ./scripts/run-benchmark compare --service eliza-medium
+  ./scripts/run-benchmark compare --all-runs --output benchmarks/RESULTS.md
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    --results-dir)
+      RESULTS_DIR="${2:-}"
+      shift 2
+      ;;
+    --output)
+      OUTPUT="${2:-}"
+      shift 2
+      ;;
+    --service)
+      SERVICE_FILTER="${2:-}"
+      shift 2
+      ;;
+    --profile)
+      PROFILE_FILTER="${2:-}"
+      shift 2
+      ;;
+    --all-runs)
+      ALL_RUNS="true"
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      print_usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -x "$BASE_VENV/bin/python" ]]; then
+  PYTHON="$BASE_VENV/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON="$(command -v python3)"
+else
+  echo "Python interpreter not found. Run ./scripts/setup prerequisites first." >&2
+  exit 1
+fi
+
+args=()
+[[ -n "$OUTPUT" ]] && args+=(--output "$OUTPUT")
+[[ -n "$SERVICE_FILTER" ]] && args+=(--service "$SERVICE_FILTER")
+[[ -n "$PROFILE_FILTER" ]] && args+=(--profile "$PROFILE_FILTER")
+[[ "$ALL_RUNS" == "true" ]] && args+=(--all-runs)
+
+exec "$PYTHON" "$ROOT_DIR/scripts/lib/benchmark_compare.py" \
+  --results-dir "$RESULTS_DIR" \
+  ${args[@]+"${args[@]}"}

@@ -6,6 +6,7 @@ __pycache__/
 .env
 logs/
 benchmarks/results/*.json
+benchmarks/results/*.jsonl
 benchmarks/results/*.md
 !benchmarks/results/.gitkeep
 tmp/
