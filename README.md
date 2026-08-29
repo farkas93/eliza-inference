@@ -168,4 +168,26 @@ The TUI shows:
 
 Run it alongside your services — it refreshes automatically.
 
+## Benchmarks
+
+Run and inspect benchmarks from the CLI (wraps `scripts/run-benchmark`):
+
+```bash
+# Run a single benchmark type for a service
+eliza-cli benchmark run token-generation eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
+eliza-cli benchmark run memory-footprint eliza-medium --context-tokens-list 8192,32768
+eliza-cli benchmark run voice-latency eliza-small
+
+# Run the standard suite (stream + memory for eliza-medium, voice for eliza-small)
+eliza-cli benchmark all
+
+# Regenerate the curated comparison table (benchmarks/RESULTS.md)
+eliza-cli benchmark compare
+
+# List recent runs from the ledger
+eliza-cli benchmark list --service eliza-medium --limit 10
+```
+
+Types are `token-generation`, `memory-footprint`, and `voice-latency`. Any options after the service name are passed through to the underlying suite script. Results are stored under `benchmarks/results/` (per-run JSON plus a `runs.jsonl` ledger); those are gitignored, while `benchmarks/RESULTS.md` is the committable summary.
+
 See `docs/` for setup, stack, networking, model, and troubleshooting notes.
