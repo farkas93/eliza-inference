@@ -147,18 +147,23 @@ parse_service_profile() {
   fi
 
   if [[ -z "$PROFILE" ]]; then
-    case "$SERVICE" in
-      eliza-medium) PROFILE="medium/qwen3.8-flash-next-llamacpp-256k" ;;
-      eliza-small) PROFILE="small/gemma4-e4b-q4-llamacpp-128k" ;;
-      stt) PROFILE="stt/faster-whisper-small-cpu" ;;
-      tts) PROFILE="tts/piper-lessac" ;;
-      voice-assistant) PROFILE="voice/assistant-local" ;;
-      vocode-bridge) PROFILE="vocode/bridge-local" ;;
-      *)
-        echo "No default profile for service: $SERVICE" >&2
-        exit 2
-        ;;
-    esac
+    live_profile="$(runtime_state get --state "$RUNTIME_STATE_FILE" --service "$SERVICE" 2>/dev/null || true)"
+    if [[ -n "$live_profile" ]]; then
+      PROFILE="$live_profile"
+    else
+      case "$SERVICE" in
+        eliza-medium) PROFILE="medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k" ;;
+        eliza-small) PROFILE="small/gemma4-e4b-q4-llamacpp-128k" ;;
+        stt) PROFILE="stt/faster-whisper-small-cpu" ;;
+        tts) PROFILE="tts/piper-lessac" ;;
+        voice-assistant) PROFILE="voice/assistant-local" ;;
+        vocode-bridge) PROFILE="vocode/bridge-local" ;;
+        *)
+          echo "No default profile for service: $SERVICE" >&2
+          exit 2
+          ;;
+      esac
+    fi
   fi
 
   PROFILE_PATH="$(resolve_profile_path "$PROFILE" || true)"

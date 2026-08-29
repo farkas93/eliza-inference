@@ -12,7 +12,7 @@ WITH_SGLANG="true"
 DOWNLOAD_MODELS="true"
 RUN_SMOKE_TESTS="true"
 SMALL_PROFILE="small/gemma4-e4b-q4-llamacpp-128k"
-MEDIUM_PROFILE="medium/qwen3.8-flash-next-llamacpp-256k"
+MEDIUM_PROFILE="medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k"
 STT_PROFILE="stt/faster-whisper-small-cpu"
 TTS_PROFILE="tts/piper-lessac"
 

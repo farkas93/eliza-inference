@@ -59,5 +59,9 @@ if [[ -n "${OVERRIDE_TENSOR:-}" ]]; then
   cmd+=(--override-tensor "$OVERRIDE_TENSOR")
 fi
 
+if [[ -n "${N_CPU_MOE:-}" ]]; then
+  cmd+=(--n-cpu-moe "$N_CPU_MOE")
+fi
+
 echo "Starting eliza-medium llama.cpp: ${cmd[*]}"
 exec "${cmd[@]}"

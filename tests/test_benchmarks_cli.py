@@ -269,5 +269,12 @@ class RenderRunsTableTest(unittest.TestCase):
         self.assertIn("0 of 1", out)
 
 
+class LiveProfileBenchmarkTest(unittest.TestCase):
+    def test_common_sh_resolves_live_profile_when_unspecified(self):
+        common_sh = (ROOT_DIR / "scripts" / "lib" / "common.sh").read_text(encoding="utf-8")
+        self.assertIn('live_profile="$(runtime_state get --state "$RUNTIME_STATE_FILE" --service "$SERVICE"', common_sh)
+        self.assertIn('PROFILE="$live_profile"', common_sh)
+
+
 if __name__ == "__main__":
     unittest.main()
