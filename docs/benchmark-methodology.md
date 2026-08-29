@@ -80,17 +80,20 @@ Aggregate the ledger into a curated comparison with:
 ./scripts/run-benchmark compare --all-runs
 ```
 
-`compare` keeps the latest run per service/profile/type by default
-(`--all-runs` shows every run) and writes a markdown table per benchmark type
-to `benchmarks/RESULTS.md` by default (`--output` overrides). If no ledger
-exists it falls back to scanning the per-run result JSON files. The curated
-`benchmarks/RESULTS.md` is meant to be committed so profile comparisons are
-reviewable; the raw JSON results and the ledger stay local.
+`compare` keeps the latest run per profile/type by default
+(`--all-runs` shows every run) and writes one flat markdown table per
+benchmark type across all services to `benchmarks/RESULTS.md` by default
+(`--output` overrides). It merges the ledger with any per-run result JSON
+files, collapsing legacy `eliza-medium-*` / `eliza-small-*` references
+into canonical `category/name` profile ids.
 
-To refresh the committed results on the DGX:
+The working copy `benchmarks/RESULTS.md` is gitignored. To publish the
+curated comparison to the git host, use `eliza-cli bench publish` (which
+copies to `BENCHMARKS.md` at the repository root, commits on `main`, and
+pushes):
 
 ```bash
-./scripts/run-benchmark all
-./scripts/run-benchmark compare
-git diff benchmarks/RESULTS.md
+eliza-cli bench all
+eliza-cli bench publish --dry-run
+eliza-cli bench publish
 ```

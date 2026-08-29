@@ -1,16 +1,22 @@
 import argparse
+import json
 import pathlib
 import sys
 from core.benchmarks import (
-    BENCHMARK_TYPES,
+    TYPE_CHOICES,
     DEFAULT_RESULTS_DIR,
+    extract_profile,
     filter_records,
     ledger_path,
     read_ledger,
     render_runs_table,
+    resolve_type,
+    service_from_profile,
 )
+from core.completion import completion_data, render_bash, render_zsh
 from core.discovery import DiscoveryEngine
 from core.executor import Executor
+from core.publish import PublishError, publish_results
 from tui.app import ElizaTUI
 
 def main():
@@ -18,20 +24,21 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # 'list' command
-    subparsers.add_parser("list", help="List services and profiles (Standard CLI)")
+    list_parser = subparsers.add_parser("list", help="List services and profiles (Standard CLI)")
+    list_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
     # 'download' command
     download_parser = subparsers.add_parser("download", help="Download model artifacts for a service/profile")
     download_parser.add_argument("service", help="Service name (e.g. eliza-small, stt, tts)")
     download_parser.add_argument("--profile", "-p", default=None, help="Profile ID (default: auto-detected from service)")
 
-    # 'benchmark' command
-    benchmark_parser = subparsers.add_parser("benchmark", help="Run and inspect benchmarks")
+    # 'benchmark' command (also available as 'bench')
+    benchmark_parser = subparsers.add_parser("benchmark", aliases=["bench"], help="Run and inspect benchmarks")
     benchmark_sub = benchmark_parser.add_subparsers(dest="bench_command", help="Benchmark actions")
 
     bench_run = benchmark_sub.add_parser("run", help="Run a single benchmark type for a service")
-    bench_run.add_argument("type", choices=BENCHMARK_TYPES, help="Benchmark type")
-    bench_run.add_argument("service", help="Service name (e.g. eliza-medium)")
+    bench_run.add_argument("type", choices=TYPE_CHOICES, help="Benchmark type (token-generation|tok, memory-footprint|mem, voice-latency|voice)")
+    bench_run.add_argument("service", nargs="?", default=None, help="Service name (default: inferred from --profile)")
     bench_run.add_argument(
         "extra",
         nargs=argparse.REMAINDER,
@@ -48,12 +55,26 @@ def main():
     bench_compare.add_argument("--profile", default=None, help="Only include this profile")
     bench_compare.add_argument("--all-runs", action="store_true", help="Show every run instead of latest per profile")
 
+    bench_publish = benchmark_sub.add_parser(
+        "publish",
+        help="Regenerate results and commit+push BENCHMARKS.md to the repo root",
+    )
+    bench_publish.add_argument("--force", action="store_true", help=f"Publish even when not on the main branch")
+    bench_publish.add_argument("--dry-run", action="store_true", help="Show what would be published without committing")
+
     bench_list = benchmark_sub.add_parser("list", help="List recent benchmark runs from the ledger")
     bench_list.add_argument("--service", default=None, help="Filter by service")
     bench_list.add_argument("--profile", default=None, help="Filter by profile")
-    bench_list.add_argument("--type", default=None, choices=BENCHMARK_TYPES, help="Filter by benchmark type")
+    bench_list.add_argument("--type", default=None, choices=TYPE_CHOICES, help="Filter by benchmark type")
     bench_list.add_argument("--limit", type=int, default=20, help="Max runs to show (default: 20)")
     bench_list.add_argument("--results-dir", default=None, help="Results directory (default: benchmarks/results)")
+
+    # 'completion' command
+    completion_parser = subparsers.add_parser("completion", help="Print a shell completion script")
+    completion_parser.add_argument("shell", choices=("bash", "zsh"), help="Shell to generate completion for")
+
+    completion_data_parser = subparsers.add_parser("completion-data", help=argparse.SUPPRESS)
+    completion_data_parser.add_argument("--what", required=True, help="Candidate kind (commands|bench-subcommands|types|services|profiles)")
 
     # 'tui' command
     subparsers.add_parser("tui", help="Launch the interactive TUI")
@@ -66,6 +87,23 @@ def main():
     if args.command == "list":
         engine = DiscoveryEngine(root)
         stack = engine.discover()
+        if args.json:
+            payload = {
+                "stack": stack.name,
+                "services": {
+                    name: {
+                        "status": service.status,
+                        "health": service.health,
+                        "profile": service.profile_id,
+                        "live_profile": service.live_profile_id,
+                        "drift": service.drift,
+                    }
+                    for name, service in stack.services.items()
+                },
+                "profiles": sorted(stack.profiles),
+            }
+            print(json.dumps(payload, indent=2))
+            return
         print(f"\n[+] Stack Name: {stack.name}")
         print("-" * 40)
         print(
@@ -114,7 +152,14 @@ def main():
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-    elif args.command == "benchmark":
+    elif args.command == "completion":
+        print(render_bash() if args.shell == "bash" else render_zsh(), end="")
+
+    elif args.command == "completion-data":
+        for candidate in completion_data(root, args.what):
+            print(candidate)
+
+    elif args.command in ("benchmark", "bench"):
         bench = getattr(args, "bench_command", None)
 
         def progress(msg: str) -> None:
@@ -127,18 +172,32 @@ def main():
             has_profile_arg = any(
                 opt == "--profile" or opt.startswith("--profile=") for opt in extra
             )
+            service_name = args.service
+            if service_name is None:
+                profile_arg = extract_profile(extra)
+                if profile_arg is None:
+                    print("Error: <service> is required unless --profile is given.", file=sys.stderr)
+                    sys.exit(2)
+                service_name = service_from_profile(profile_arg)
+                if service_name is None:
+                    stack = DiscoveryEngine(root).discover(probe=False)
+                    profile_obj = stack.profiles.get(profile_arg)
+                    service_name = profile_obj.service_name if profile_obj else None
+                if service_name is None:
+                    print(f"Error: could not infer service from profile '{profile_arg}'.", file=sys.stderr)
+                    sys.exit(2)
             if not has_profile_arg:
                 engine = DiscoveryEngine(root)
                 stack = engine.discover()
-                svc = stack.services.get(args.service)
+                svc = stack.services.get(service_name)
                 if svc and (svc.live_profile_id or svc.profile_id):
                     profile_to_use = svc.live_profile_id or svc.profile_id
                     extra.extend(["--profile", profile_to_use])
 
-            print(f"[+] Running {args.type} benchmark for {args.service}...")
+            print(f"[+] Running {resolve_type(args.type)} benchmark for {service_name}...")
             sys.stdout.flush()
             try:
-                output = executor.run_benchmark(args.type, args.service, extra=tuple(extra), progress_callback=progress)
+                output = executor.run_benchmark(resolve_type(args.type), service_name, extra=tuple(extra), progress_callback=progress)
                 if output:
                     print(f"\n{output}")
             except Exception as exc:
@@ -173,6 +232,26 @@ def main():
             except Exception as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 sys.exit(1)
+        elif bench == "publish":
+            executor = Executor(root)
+
+            def regenerate() -> None:
+                output = executor.run_benchmark_compare(progress_callback=progress)
+                if output:
+                    print(output)
+
+            try:
+                status = publish_results(
+                    root,
+                    regenerate=regenerate,
+                    force=args.force,
+                    dry_run=args.dry_run,
+                    progress_callback=progress,
+                )
+                print(status)
+            except PublishError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
         elif bench == "list":
             if args.results_dir:
                 results_dir = pathlib.Path(args.results_dir)
@@ -185,7 +264,7 @@ def main():
                 records,
                 service=args.service,
                 profile=args.profile,
-                bench_type=args.type,
+                bench_type=resolve_type(args.type) if args.type else None,
             )
             print(render_runs_table(records, limit=args.limit))
         else:

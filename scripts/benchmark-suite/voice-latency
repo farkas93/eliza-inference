@@ -75,7 +75,9 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 timestamp="$(date -u +%Y%m%dT%H%M%S)"
-output_file="$OUTPUT_DIR/${SERVICE}-${PROFILE##*/}-voice-latency-${timestamp}.json"
+profile_slug="${PROFILE:-$SERVICE}"
+profile_slug="${profile_slug//\//-}"
+output_file="$OUTPUT_DIR/${profile_slug}-voice-latency-${timestamp}.json"
 
 "$BASE_VENV/bin/python" "$ROOT_DIR/clients/openai/voice_test.py" \
   --base-url "$base_url" \

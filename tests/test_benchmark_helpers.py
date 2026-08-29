@@ -26,6 +26,8 @@ verify_service_model = load_module("verify_service_model", "scripts/lib/verify_s
 benchmark_report = load_module("benchmark_report", "scripts/lib/benchmark_report.py")
 benchmark_ledger = load_module("benchmark_ledger", "scripts/lib/benchmark_ledger.py")
 sys.modules["benchmark_ledger"] = benchmark_ledger
+profile_references = load_module("profile_references", "scripts/lib/profile_references.py")
+sys.modules["profile_references"] = profile_references
 benchmark_compare = load_module("benchmark_compare", "scripts/lib/benchmark_compare.py")
 voice_test = load_module("voice_test_client", "clients/openai/voice_test.py")
 stream_inspect = load_module("stream_inspect_client", "clients/openai/stream_inspect.py")
@@ -463,6 +465,88 @@ class CompareLoadTest(unittest.TestCase):
         self.assertEqual(runs[0]["profile"], "medium/real-profile")
 
 
+class CompareLegacyNamesTest(unittest.TestCase):
+    def test_canonical_profile_name_collapses_legacy_prefixes(self) -> None:
+        self.assertEqual(
+            benchmark_compare.canonical_profile_name("eliza-medium-qwen3.8-27b-fp8-sglang-256k"),
+            "medium/qwen3.8-27b-fp8-sglang-256k",
+        )
+        self.assertEqual(
+            benchmark_compare.canonical_profile_name("medium/qwen3.8-27b-fp8-sglang-256k"),
+            "medium/qwen3.8-27b-fp8-sglang-256k",
+        )
+
+    def test_canonical_profile_name_resolves_aliases(self) -> None:
+        self.assertEqual(
+            benchmark_compare.canonical_profile_name("medium/qwen36-35b-a3b-llamacpp-200k-experimental"),
+            "medium/qwen3.6-35b-a3b-q4-llamacpp-256k",
+        )
+
+    def test_scan_parses_double_prefixed_legacy_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir)
+            (results_dir / "eliza-medium-eliza-medium-qwen36-35b-a3b-llamacpp-200k-experimental-stream-20260617-010609.json").write_text(
+                json.dumps({"tokens_per_second_est": 10.0}), encoding="utf-8"
+            )
+            runs = benchmark_compare.scan_result_files(results_dir)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["profile"], "medium/qwen3.6-35b-a3b-q4-llamacpp-256k")
+        self.assertEqual(runs[0]["service"], "eliza-medium")
+        self.assertEqual(runs[0]["type"], "token-generation")
+
+    def test_scan_parses_no_kind_numeric_suffix_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir)
+            (results_dir / "eliza-medium-eliza-medium-qwen-llamacpp-128k-128000-20260614-140304.json").write_text(
+                json.dumps({"tokens_per_second_est": 20.0}), encoding="utf-8"
+            )
+            runs = benchmark_compare.scan_result_files(results_dir)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["type"], "token-generation")
+        self.assertEqual(runs[0]["profile"], "medium/qwen-llamacpp-128k")
+
+    def test_scan_parses_new_serviceless_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir)
+            (results_dir / "medium-qwen3.8-27b-fp8-sglang-256k-stream-20260829-125242.json").write_text(
+                json.dumps({"tokens_per_second_est": 7.9}), encoding="utf-8"
+            )
+            runs = benchmark_compare.scan_result_files(results_dir)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["profile"], "medium/qwen3.8-27b-fp8-sglang-256k")
+        self.assertEqual(runs[0]["service"], "eliza-medium")
+
+    def test_collect_runs_merges_ledger_and_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            results_dir = pathlib.Path(temporary_dir) / "results"
+            results_dir.mkdir()
+            (results_dir / "runs.jsonl").write_text(
+                json.dumps(
+                    {
+                        "service": "eliza-medium",
+                        "profile": "medium/a",
+                        "type": "token-generation",
+                        "timestamp": "2026-08-29T10:44:16+00:00",
+                        "model": "a",
+                        "result_file": "medium-a-stream-20260829-124406.json",
+                        "metrics": {"tokens_per_second_est": 11.9},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (results_dir / "medium-a-stream-20260829-124406.json").write_text(
+                json.dumps({"tokens_per_second_est": 11.9}), encoding="utf-8"
+            )
+            (results_dir / "small-b-stream-20260623-175113.json").write_text(
+                json.dumps({"tokens_per_second_est": 5.0}), encoding="utf-8"
+            )
+            runs, description = benchmark_compare.collect_runs(results_dir)
+        profiles = sorted(run["profile"] for run in runs)
+        self.assertEqual(profiles, ["medium/a", "small/b"])
+        self.assertIn("2 runs", description)
+
+
 class CompareSelectTest(unittest.TestCase):
     def runs(self):
         return [
@@ -532,14 +616,14 @@ class CompareRenderTest(unittest.TestCase):
         markdown = benchmark_compare.render_markdown(runs, False, "ledger `runs.jsonl` (2 runs)", pathlib.Path("benchmarks/results"))
 
         self.assertIn("# Benchmark Results", markdown)
-        self.assertIn("## eliza-medium", markdown)
-        self.assertIn("## eliza-small", markdown)
-        self.assertIn("### Token generation", markdown)
-        self.assertIn("### Voice latency", markdown)
-        self.assertIn("| `medium/a` | 100.0 | - | 2.00 | 256 | no |", markdown)
-        self.assertIn("| `small/a` | 0.500 | 0.500 | 3 |", markdown)
+        self.assertIn("## Token generation", markdown)
+        self.assertIn("## Voice latency", markdown)
+        self.assertNotIn("## eliza-medium", markdown)
+        self.assertIn("| Model | Service | tok/s (est)", markdown)
+        self.assertIn("| `medium/a` | eliza-medium | 100.0 | - | 2.00 | 256 | no |", markdown)
+        self.assertIn("| `small/a` | eliza-small | 0.500 | 0.500 | 3 |", markdown)
         self.assertIn("`a-stream.json`", markdown)
-        self.assertIn("./scripts/run-benchmark compare", markdown)
+        self.assertIn("eliza-cli bench compare", markdown)
 
     def test_all_runs_adds_run_time_column(self) -> None:
         runs = [
@@ -554,7 +638,7 @@ class CompareRenderTest(unittest.TestCase):
             }
         ]
         markdown = benchmark_compare.render_markdown(runs, True, "scan (1 runs)", pathlib.Path("benchmarks/results"))
-        self.assertIn("| Profile | Run (UTC) | Median (s)", markdown)
+        self.assertIn("| Model | Service | Run (UTC) | Median (s)", markdown)
         self.assertIn("2026-08-24 12:00:00", markdown)
 
 
@@ -605,7 +689,7 @@ class CompareMainTest(unittest.TestCase):
                 )
             self.assertEqual(code, 0)
             markdown = output.read_text(encoding="utf-8")
-        self.assertIn("`medium/a` | 99.9", markdown)
+        self.assertIn("`medium/a` | eliza-medium | 99.9", markdown)
         self.assertIn("Wrote comparison for 1 runs", stdout.getvalue())
 
 

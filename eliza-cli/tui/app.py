@@ -674,7 +674,7 @@ class ElizaTUI(App):
             return False
         return all(pathlib.Path(path_text).exists() for path_text in state.expected_paths)
 
-    def _profile_selection_label(self, profile: Profile) -> str:
+    def _profile_selection_label(self, profile: Profile, is_default: bool = False) -> str:
         state = self.profile_states.get(profile.name)
         status = "[bold red]MISS[/bold red]"
         estimate = ""
@@ -685,7 +685,8 @@ class ElizaTUI(App):
                 status = "[bold yellow]RDY[/bold yellow]"
             if not state.ready and not state.deployed and state.estimated_download_size_bytes is not None:
                 estimate = f", ~{self._human_size(state.estimated_download_size_bytes)}"
-        return f"{status} {profile.name} ({profile.backend}{estimate})"
+        default_tag = " [dim](default)[/dim]" if is_default else ""
+        return f"{status} {profile.name} ({profile.backend}{estimate}){default_tag}"
 
     @staticmethod
     def _profile_snapshot_from_states(states: dict[str, ProfileState]) -> tuple[tuple[str, bool, bool], ...]:
@@ -1239,10 +1240,18 @@ class ElizaTUI(App):
             self.notify(f"No profiles available for {service_name}", severity="error")
             return
 
+        service_obj = self.stack.services.get(service_name)
+        configured_profile = service_obj.profile_id if service_obj else ""
         dialog = ProfileSelectDialog(
             service_name,
             profiles_for_service,
-            profile_labels={profile.name: self._profile_selection_label(profile) for profile in profiles_for_service},
+            profile_labels={
+                profile.name: self._profile_selection_label(
+                    profile,
+                    is_default=(profile.name == configured_profile),
+                )
+                for profile in profiles_for_service
+            },
         )
         self.push_screen(
             dialog,
@@ -1296,7 +1305,8 @@ class ElizaTUI(App):
             self.notify(f"Unknown service: {service_name}", severity="error")
             return
 
-        if selected_profile.name == current_service.profile_id:
+        active_profile_id = current_service.live_profile_id or current_service.profile_id
+        if selected_profile.name == active_profile_id:
             self.notify(f"{service_name} already uses {selected_profile.name}", severity="information")
             return
 

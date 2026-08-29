@@ -170,24 +170,57 @@ Run it alongside your services — it refreshes automatically.
 
 ## Benchmarks
 
-Run and inspect benchmarks from the CLI (wraps `scripts/run-benchmark`):
+Run and inspect benchmarks from the CLI (`benchmark` can be shortened to
+`bench`, and type names to `tok`/`mem`/`voice`):
 
 ```bash
-# Run a single benchmark type for a service
-eliza-cli benchmark run token-generation eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
-eliza-cli benchmark run memory-footprint eliza-medium --context-tokens-list 8192,32768
-eliza-cli benchmark run voice-latency eliza-small
+# Run a single benchmark type (service is inferred from --profile)
+eliza-cli bench run tok --profile medium/qwen3.8-27b-fp8-sglang-256k
+eliza-cli bench run mem eliza-medium --context-tokens-list 8192,32768
+eliza-cli bench run voice --profile small/gemma4-e4b-q4-llamacpp-128k
 
 # Run the standard suite (stream + memory for eliza-medium, voice for eliza-small)
-eliza-cli benchmark all
+eliza-cli bench all
 
-# Regenerate the curated comparison table (benchmarks/RESULTS.md)
-eliza-cli benchmark compare
+# Regenerate the local working copy of the comparison (benchmarks/RESULTS.md)
+eliza-cli bench compare
+
+# Publish the curated results as BENCHMARKS.md at the repo root (commit + push)
+eliza-cli bench publish --dry-run
+eliza-cli bench publish
 
 # List recent runs from the ledger
-eliza-cli benchmark list --service eliza-medium --limit 10
+eliza-cli bench list --limit 10
 ```
 
-Types are `token-generation`, `memory-footprint`, and `voice-latency`. Any options after the service name are passed through to the underlying suite script. Results are stored under `benchmarks/results/` (per-run JSON plus a `runs.jsonl` ledger); those are gitignored, while `benchmarks/RESULTS.md` is the committable summary.
+Types are `token-generation` (`tok`), `memory-footprint` (`mem`), and
+`voice-latency` (`voice`). The `<service>` argument is optional whenever
+`--profile` identifies the target (`medium/...` runs on eliza-medium,
+`small/...` on eliza-small). Any extra options are passed through to the
+underlying suite script. Results are stored under `benchmarks/results/`
+(per-run JSON plus a `runs.jsonl` ledger) and are gitignored, together
+with the generated working copy `benchmarks/RESULTS.md`. The comparison
+groups every profile into one table per benchmark type (the service is
+just a column), and legacy `eliza-medium-*` profile names are collapsed
+into their canonical `category/name` ids.
+
+`eliza-cli bench publish` copies the freshly generated `RESULTS.md` to
+`BENCHMARKS.md` at the repository root, commits it, and pushes it so the
+tables render on your git host. Publishing only runs on `main` unless
+`--force` is given; `--dry-run` shows what would happen.
+
+## Shell completion
+
+```bash
+# Print a completion script
+eliza-cli completion bash
+eliza-cli completion zsh
+```
+
+`./install-cli` installs these automatically (bash completion under
+`~/.local/share/bash-completion/completions/eliza-cli`, zsh completion
+under `~/.zsh/completions/_eliza-cli`) and registers the required
+snippets in `~/.bashrc` / `~/.zshrc`. Completions cover commands,
+benchmark types, services, and canonical profile ids.
 
 See `docs/` for setup, stack, networking, model, and troubleshooting notes.

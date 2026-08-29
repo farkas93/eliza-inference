@@ -14,6 +14,40 @@ from typing import Any
 # Benchmark types that take a <service> argument (see scripts/run-benchmark).
 BENCHMARK_TYPES = ("token-generation", "memory-footprint", "voice-latency")
 
+# Short aliases accepted on the command line.
+TYPE_ALIASES = {
+    "tok": "token-generation",
+    "mem": "memory-footprint",
+    "voice": "voice-latency",
+}
+
+TYPE_CHOICES = BENCHMARK_TYPES + tuple(TYPE_ALIASES)
+
+# Maps profile categories to service names.
+CATEGORY_SERVICES = {"small": "eliza-small", "medium": "eliza-medium"}
+
+
+def resolve_type(name: str) -> str:
+    """Expand a short benchmark type alias (tok/mem/voice) to its full name."""
+    return TYPE_ALIASES.get(name, name)
+
+
+def service_from_profile(profile: str) -> str | None:
+    """Infer the service name from a canonical `category/name` profile id."""
+    category = profile.split("/", 1)[0] if "/" in profile else ""
+    return CATEGORY_SERVICES.get(category)
+
+
+def extract_profile(extra: tuple[str, ...] | list[str]) -> str | None:
+    """Return the --profile value from extra argv, if present."""
+    for index, opt in enumerate(extra):
+        if opt == "--profile" and index + 1 < len(extra):
+            return str(extra[index + 1])
+        if opt.startswith("--profile="):
+            return opt.split("=", 1)[1]
+    return None
+
+
 LEDGER_NAME = "runs.jsonl"
 DEFAULT_RESULTS_DIR = pathlib.Path("benchmarks") / "results"
 
