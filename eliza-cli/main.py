@@ -99,7 +99,7 @@ def main():
             if svc is None:
                 print(f"Error: service '{args.service}' not found. Use --profile to specify a profile.", file=sys.stderr)
                 sys.exit(1)
-            profile_id = svc.profile_id
+            profile_id = svc.live_profile_id or svc.profile_id
 
         print(f"Downloading model artifacts for {args.service} ({profile_id})...")
         sys.stdout.flush()
@@ -123,11 +123,22 @@ def main():
 
         if bench == "run":
             executor = Executor(root)
-            extra = tuple(args.extra) if args.extra else ()
+            extra = list(args.extra) if args.extra else []
+            has_profile_arg = any(
+                opt == "--profile" or opt.startswith("--profile=") for opt in extra
+            )
+            if not has_profile_arg:
+                engine = DiscoveryEngine(root)
+                stack = engine.discover()
+                svc = stack.services.get(args.service)
+                if svc and (svc.live_profile_id or svc.profile_id):
+                    profile_to_use = svc.live_profile_id or svc.profile_id
+                    extra.extend(["--profile", profile_to_use])
+
             print(f"[+] Running {args.type} benchmark for {args.service}...")
             sys.stdout.flush()
             try:
-                output = executor.run_benchmark(args.type, args.service, extra=extra, progress_callback=progress)
+                output = executor.run_benchmark(args.type, args.service, extra=tuple(extra), progress_callback=progress)
                 if output:
                     print(f"\n{output}")
             except Exception as exc:
