@@ -15,6 +15,7 @@ case "$profile" in
   medium/qwen3-coder-next-sglang|medium/eliza-medium-qwen3-coder-next-sglang) profile="medium/qwen3-coder-next-sglang-256k" ;;
   medium/qwen3.6-27b-nvfp4-vllm|medium/eliza-medium-qwen3.6-27b-nvfp4-vllm) profile="medium/qwen3.6-27b-nvfp4-vllm-256k" ;;
   medium/qwen3.6-27b-nvfp4-sglang|medium/eliza-medium-qwen3.6-27b-nvfp4-sglang) profile="medium/qwen3.6-27b-nvfp4-sglang-256k" ;;
+  medium/qwen3.8-flash-next|medium/eliza-medium-qwen3.8-flash-next|medium/qwen3.8-flash-next-llamacpp) profile="medium/qwen3.8-flash-next-llamacpp-256k" ;;
   medium/qwen3.8-27b-fp8-sglang|medium/eliza-medium-qwen3.8-27b-fp8-sglang) profile="medium/qwen3.8-27b-fp8-sglang-256k" ;;
   medium/qwen3.8-27b-ud-q4-k-xl-llamacpp|medium/eliza-medium-qwen3.8-27b-ud-q4-k-xl-llamacpp) profile="medium/qwen3.8-27b-ud-q4-k-xl-llamacpp-256k" ;;
   medium/qwen3.5-122b-a10b-nvfp4-vllm|medium/eliza-medium-qwen3.5-122b-a10b-nvfp4-vllm) profile="medium/qwen3.5-122b-a10b-nvfp4-vllm-256k" ;;

@@ -49,5 +49,15 @@ if [[ -n "${PARALLEL:-}" ]]; then
   cmd+=(--parallel "$PARALLEL")
 fi
 
+if [[ "${FIT:-}" == "off" ]]; then
+  cmd+=(--fit off)
+elif [[ "${FIT:-}" == "on" ]]; then
+  cmd+=(--fit on)
+fi
+
+if [[ -n "${OVERRIDE_TENSOR:-}" ]]; then
+  cmd+=(--override-tensor "$OVERRIDE_TENSOR")
+fi
+
 echo "Starting eliza-medium llama.cpp: ${cmd[*]}"
 exec "${cmd[@]}"

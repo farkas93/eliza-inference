@@ -148,7 +148,7 @@ parse_service_profile() {
 
   if [[ -z "$PROFILE" ]]; then
     case "$SERVICE" in
-      eliza-medium) PROFILE="medium/qwen3.8-27b-fp8-sglang-256k" ;;
+      eliza-medium) PROFILE="medium/qwen3.8-flash-next-llamacpp-256k" ;;
       eliza-small) PROFILE="small/gemma4-e4b-q4-llamacpp-128k" ;;
       stt) PROFILE="stt/faster-whisper-small-cpu" ;;
       tts) PROFILE="tts/piper-lessac" ;;
