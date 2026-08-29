@@ -21,7 +21,7 @@ enabled = true
 
 [[services]]
 name = "eliza-medium"
-profile = "medium/qwen3.8-27b-fp8-sglang-256k"
+profile = "medium/qwen3.8-flash-next-llamacpp-256k"
 health_url = "http://127.0.0.1:8001/v1/models"
 enabled = true
 
@@ -41,11 +41,11 @@ purpose = "low-latency voice turns"
 
 [models.eliza-medium]
 service = "eliza-medium"
-profile = "medium/qwen3.8-27b-fp8-sglang-256k"
+profile = "medium/qwen3.8-flash-next-llamacpp-256k"
 public_name = "eliza-medium"
-actual_model = "Qwen/Qwen3.8-27B-FP8"
+actual_model = "unsloth/Qwen3.8-Flash-Next-GGUF"
 base_url = "http://127.0.0.1:8001/v1"
-purpose = "larger reasoning and coding tasks"
+purpose = "larger reasoning and coding tasks (Qwen3.8 Flash Next, llama.cpp)"
 
 [models.qwen3-coder-next-llamacpp]
 service = "eliza-medium"
