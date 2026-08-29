@@ -9,6 +9,7 @@ from typing import Callable, List
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from .benchmarks import build_all_command, build_compare_command, build_run_command
 from .models import BackendRuntime
 
 logger = logging.getLogger(__name__)
@@ -519,5 +520,48 @@ class Executor:
     def download_model(self, service_name: str, profile_id: str, progress_callback: Callable[[str], None] | None = None) -> str:
         """Downloads artifacts for a service/profile and returns command output."""
         cmd = ["./scripts/download-models", service_name, "--profile", profile_id]
+        result = self._run_command(cmd, progress_callback=progress_callback)
+        return (result.stdout or "").strip()
+
+    def run_benchmark(
+        self,
+        bench_type: str,
+        service_name: str,
+        extra: tuple[str, ...] = (),
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> str:
+        """Runs a single benchmark type for a service. Returns command output."""
+        cmd = build_run_command(bench_type, service_name, extra=extra)
+        result = self._run_command(cmd, progress_callback=progress_callback)
+        return (result.stdout or "").strip()
+
+    def run_benchmark_all(
+        self,
+        force: bool = False,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> str:
+        """Runs the standard benchmark suite. Returns command output."""
+        extra = ("--force",) if force else ()
+        cmd = build_all_command(extra=extra)
+        result = self._run_command(cmd, progress_callback=progress_callback)
+        return (result.stdout or "").strip()
+
+    def run_benchmark_compare(
+        self,
+        results_dir: str | None = None,
+        output: str | None = None,
+        service: str | None = None,
+        profile: str | None = None,
+        all_runs: bool = False,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> str:
+        """Regenerates the benchmark comparison markdown. Returns command output."""
+        cmd = build_compare_command(
+            results_dir=results_dir,
+            output=output,
+            service=service,
+            profile=profile,
+            all_runs=all_runs,
+        )
         result = self._run_command(cmd, progress_callback=progress_callback)
         return (result.stdout or "").strip()
