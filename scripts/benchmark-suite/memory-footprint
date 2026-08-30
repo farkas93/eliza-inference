@@ -118,11 +118,11 @@ if [[ "$FORCE" != "true" ]]; then
 fi
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
-profile_slug="${PROFILE:-default}"
+profile_slug="${PROFILE:-$SERVICE}"
 profile_slug="${profile_slug//\//-}"
 
 if [[ -z "$OUTPUT_JSON" ]]; then
-  OUTPUT_JSON="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-memory-footprint-${timestamp}.json"
+  OUTPUT_JSON="$ROOT_DIR/benchmarks/results/${profile_slug}-memory-footprint-${timestamp}.json"
 fi
 mkdir -p "$(dirname "$OUTPUT_JSON")"
 

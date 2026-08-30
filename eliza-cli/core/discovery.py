@@ -12,7 +12,7 @@ class DiscoveryEngine:
         self.root_dir = root_dir
         self.runtime_probe = RuntimeProbe(root_dir)
 
-    def discover(self) -> Stack:
+    def discover(self, probe: bool = True) -> Stack:
         stack_path = self.root_dir / "configs" / "eliza-stack.toml"
         if not stack_path.exists():
             raise FileNotFoundError(f"Stack configuration not found at {stack_path}")
@@ -49,7 +49,8 @@ class DiscoveryEngine:
             )
             stack.services[name] = service
 
-        stack.services = self.runtime_probe.merge_live_state(stack.services, stack.profiles)
+        if probe:
+            stack.services = self.runtime_probe.merge_live_state(stack.services, stack.profiles)
 
         return stack
 

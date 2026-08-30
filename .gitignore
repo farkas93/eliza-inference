@@ -9,5 +9,6 @@ benchmarks/results/*.json
 benchmarks/results/*.jsonl
 benchmarks/results/*.md
 !benchmarks/results/.gitkeep
+benchmarks/RESULTS.md
 tmp/
 models/

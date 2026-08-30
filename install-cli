@@ -85,6 +85,73 @@ add_path_block() {
   echo "Updated $rc_file with ~/.local/bin PATH block"
 }
 
+add_bash_completion_block() {
+  local rc_file="$1"
+  local begin="# >>> eliza-cli completion >>>"
+  local end="# <<< eliza-cli completion <<<"
+
+  if [[ ! -f "$rc_file" ]]; then
+    touch "$rc_file"
+  fi
+
+  if grep -q "$begin" "$rc_file"; then
+    return 0
+  fi
+
+  {
+    printf "\n%s\n" "$begin"
+    printf "if [ -f \"$HOME/.local/share/bash-completion/completions/eliza-cli\" ]; then\n"
+    printf "  . \"$HOME/.local/share/bash-completion/completions/eliza-cli\"\n"
+    printf "fi\n"
+    printf "%s\n" "$end"
+  } >> "$rc_file"
+
+  echo "Updated $rc_file with bash completion source block"
+}
+
+add_zsh_fpath_block() {
+  local rc_file="$1"
+  local begin="# >>> eliza-cli completion >>>"
+  local end="# <<< eliza-cli completion <<<"
+
+  if [[ ! -f "$rc_file" ]]; then
+    touch "$rc_file"
+  fi
+
+  if grep -q "$begin" "$rc_file"; then
+    return 0
+  fi
+
+  {
+    printf "\n%s\n" "$begin"
+    printf "fpath=(\"$HOME/.zsh/completions\" \$fpath)\n"
+    printf "autoload -Uz compinit && compinit\n"
+    printf "%s\n" "$end"
+  } >> "$rc_file"
+
+  echo "Updated $rc_file with zsh fpath block"
+}
+
+install_completions() {
+  local bash_dir="$HOME/.local/share/bash-completion/completions"
+  local zsh_dir="$HOME/.zsh/completions"
+  mkdir -p "$bash_dir" "$zsh_dir"
+
+  if "$BIN_PATH" completion bash > "$bash_dir/eliza-cli" 2>/dev/null; then
+    echo "Installed bash completion: $bash_dir/eliza-cli"
+  else
+    rm -f "$bash_dir/eliza-cli"
+    echo "Warning: could not generate bash completion." >&2
+  fi
+
+  if "$BIN_PATH" completion zsh > "$zsh_dir/_eliza-cli" 2>/dev/null; then
+    echo "Installed zsh completion: $zsh_dir/_eliza-cli"
+  else
+    rm -f "$zsh_dir/_eliza-cli"
+    echo "Warning: could not generate zsh completion." >&2
+  fi
+}
+
 if [[ ! -f "$CLI_MAIN" ]]; then
   echo "CLI entrypoint is missing: $CLI_MAIN" >&2
   exit 1
@@ -110,9 +177,13 @@ echo "Installed launcher: $BIN_PATH"
 if [[ "$AUTO_SHELL_RC" == "true" ]]; then
   add_path_block "$HOME/.bashrc"
   add_path_block "$HOME/.zshrc"
+  add_bash_completion_block "$HOME/.bashrc"
+  add_zsh_fpath_block "$HOME/.zshrc"
 fi
 
 export PATH="$BIN_DIR:$PATH"
+
+install_completions
 
 if "$BIN_PATH" list >/dev/null 2>&1; then
   echo "eliza-cli installation verified."

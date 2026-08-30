@@ -12,15 +12,22 @@ sys.path.insert(0, str(ROOT_DIR / "eliza-cli"))
 
 from core.benchmarks import (  # noqa: E402
     BENCHMARK_TYPES,
+    TYPE_ALIASES,
+    TYPE_CHOICES,
     build_all_command,
     build_compare_command,
     build_run_command,
+    extract_profile,
     filter_records,
     key_metric,
     ledger_path,
     read_ledger,
     render_runs_table,
+    resolve_type,
+    service_from_profile,
 )
+from core.completion import completion_data, render_bash, render_zsh
+from core.publish import PublishError, publish_results
 
 
 def make_record(
@@ -274,6 +281,88 @@ class LiveProfileBenchmarkTest(unittest.TestCase):
         common_sh = (ROOT_DIR / "scripts" / "lib" / "common.sh").read_text(encoding="utf-8")
         self.assertIn('live_profile="$(runtime_state get --state "$RUNTIME_STATE_FILE" --service "$SERVICE"', common_sh)
         self.assertIn('PROFILE="$live_profile"', common_sh)
+
+
+class CliEnhancementsTest(unittest.TestCase):
+    def test_type_resolution(self):
+        self.assertEqual(resolve_type("tok"), "token-generation")
+        self.assertEqual(resolve_type("mem"), "memory-footprint")
+        self.assertEqual(resolve_type("voice"), "voice-latency")
+        self.assertEqual(resolve_type("token-generation"), "token-generation")
+        self.assertEqual(set(TYPE_CHOICES), set(BENCHMARK_TYPES) | set(TYPE_ALIASES))
+
+    def test_service_from_profile(self):
+        self.assertEqual(service_from_profile("medium/qwen3.8-flash-next"), "eliza-medium")
+        self.assertEqual(service_from_profile("small/gemma4-e4b"), "eliza-small")
+        self.assertIsNone(service_from_profile("bare-name"))
+        self.assertIsNone(service_from_profile("unknown/foo"))
+
+    def test_extract_profile(self):
+        self.assertEqual(
+            extract_profile(("--force", "--profile", "medium/a", "--max-tokens", "10")),
+            "medium/a",
+        )
+        self.assertEqual(
+            extract_profile(("--profile=small/b", "--force")),
+            "small/b",
+        )
+        self.assertIsNone(extract_profile(("--force", "--other")))
+
+    def test_completion_data_emits_candidates(self):
+        commands = completion_data(ROOT_DIR, "commands")
+        self.assertIn("bench", commands)
+        self.assertIn("publish", completion_data(ROOT_DIR, "bench-subcommands"))
+        self.assertIn("tok", completion_data(ROOT_DIR, "types"))
+        services = completion_data(ROOT_DIR, "services")
+        self.assertIn("eliza-medium", services)
+        profiles = completion_data(ROOT_DIR, "profiles")
+        self.assertTrue(any(p.startswith("medium/") for p in profiles))
+
+    def test_completion_scripts_render_non_empty(self):
+        bash = render_bash()
+        self.assertIn("complete -F _eliza_cli_complete eliza-cli", bash)
+        zsh = render_zsh()
+        self.assertIn("#compdef eliza-cli", zsh)
+
+    def _init_git_repo(self, root: pathlib.Path, branch: str = "feature/test") -> None:
+        import subprocess
+        subprocess.run(["git", "init", "-b", branch], cwd=root, capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=root, capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, capture_output=True, check=True)
+        dummy = root / "README.md"
+        dummy.write_text("# Repo\n", encoding="utf-8")
+        subprocess.run(["git", "add", "README.md"], cwd=root, capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=root, capture_output=True, check=True)
+
+    def test_publish_rejects_non_main_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = pathlib.Path(tmp)
+            self._init_git_repo(tmp_root, branch="feature/my-branch")
+            with self.assertRaises(PublishError) as ctx:
+                publish_results(tmp_root, target_branch="main", force=False)
+            self.assertIn("publish commits directly to 'main'", str(ctx.exception))
+            self.assertIn("current branch is 'feature/my-branch'", str(ctx.exception))
+
+    def test_publish_dry_run_reports_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = pathlib.Path(tmp)
+            self._init_git_repo(tmp_root, branch="main")
+            working_dir = tmp_root / "benchmarks"
+            working_dir.mkdir(parents=True)
+            (working_dir / "RESULTS.md").write_text("# Results\n", encoding="utf-8")
+            status = publish_results(
+                tmp_root,
+                target_branch="main",
+                force=False,
+                dry_run=True,
+            )
+            self.assertIn("[dry-run] Would create BENCHMARKS.md", status)
+            self.assertFalse((tmp_root / "BENCHMARKS.md").exists())
+
+    def test_tui_app_guard_checks_live_profile(self):
+        app_source = (ROOT_DIR / "eliza-cli" / "tui" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("active_profile_id = current_service.live_profile_id or current_service.profile_id", app_source)
+        self.assertIn("selected_profile.name == active_profile_id", app_source)
 
 
 if __name__ == "__main__":

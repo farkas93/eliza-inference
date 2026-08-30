@@ -88,9 +88,9 @@ source_profile
 base_url="http://127.0.0.1:${PORT}/v1"
 model="${MODEL_NAME:-${MODEL_ID:-${MODEL_FILE:-local-model}}}"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-profile_slug="${PROFILE:-default}"
+profile_slug="${PROFILE:-$SERVICE}"
 profile_slug="${profile_slug//\//-}"
-output="$ROOT_DIR/benchmarks/results/${SERVICE}-${profile_slug}-stream-${timestamp}.json"
+output="$ROOT_DIR/benchmarks/results/${profile_slug}-stream-${timestamp}.json"
 
 if [[ ! -x "$BASE_VENV/bin/python" ]]; then
   echo "Base venv missing. Run ./scripts/setup prerequisites first." >&2

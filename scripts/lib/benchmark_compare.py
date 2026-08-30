@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Aggregate benchmark runs into a curated markdown comparison.
 
-Reads the append-only runs.jsonl ledger (preferred) or falls back to
-scanning per-run result JSON files, keeps the latest run per
-(service, profile, type) by default, and renders a markdown table per
-benchmark type.
+Reads the append-only runs.jsonl ledger and scans per-run result JSON
+files (deduplicating by result file), keeps the latest run per
+(profile, type) by default, and renders one flat markdown table per
+benchmark type across all services. Profile names are normalized to
+canonical `category/name` ids (legacy `eliza-medium-*` style references
+and aliases.sh shorthands collapse into their canonical profile).
 
 Usage:
   benchmark_compare.py [--results-dir DIR] [--output PATH]
@@ -21,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import benchmark_ledger
+import profile_references
 
 ROOT_DIR = pathlib.Path(__file__).resolve().parents[2]
 
@@ -30,6 +33,7 @@ TYPE_LABELS = {
     "memory-footprint": "Memory footprint",
     "voice-latency": "Voice latency",
 }
+CATEGORY_DIRS = ("small", "medium", "stt", "tts", "vocode", "voice")
 
 COLUMNS: dict[str, list[tuple[str, str, str]]] = {
     "token-generation": [
@@ -54,9 +58,14 @@ COLUMNS: dict[str, list[tuple[str, str, str]]] = {
     ],
 }
 
+# Matches current `<category>-<name>-<kind>-<ts>.json` files as well as
+# legacy `<service>-<service>-<name>-<kind>-<ts>.json` and
+# `<service>-<category>-<name>-<contexttokens>-<ts>.json` (no kind token,
+# old stream runs where the context size took the kind slot).
 FILE_NAME_PATTERN = re.compile(
-    r"^(?P<service>eliza-[a-z]+)-(?P<middle>.+)-"
-    r"(?P<kind>stream|memory-footprint|voice-latency)-"
+    r"^(?:(?P<service>eliza-[a-z]+)-)?"
+    r"(?P<middle>.+)-"
+    r"(?P<kind>stream|memory-footprint|voice-latency|\d{2,})-"
     r"(?P<ts>\d{8}[-T]?\d{6})\.json$"
 )
 KIND_TO_TYPE = {
@@ -64,7 +73,37 @@ KIND_TO_TYPE = {
     "memory-footprint": "memory-footprint",
     "voice-latency": "voice-latency",
 }
-PROFILE_DIRS = {"eliza-medium": "medium", "eliza-small": "small"}
+
+
+def _alias_map() -> dict[str, str]:
+    try:
+        return profile_references.aliases()
+    except OSError:
+        return {}
+
+
+def canonical_profile_name(raw: str) -> str:
+    """Collapse legacy prefixes and aliases.sh shorthands to a canonical id."""
+    if not raw or raw == "default":
+        return raw
+    name = raw[:-4] if raw.endswith(".env") else raw
+    name = profile_references.normalize_reference(name)
+    first_segment = name.split("-", 1)[0]
+    if "/" not in name and first_segment in CATEGORY_DIRS:
+        name = name.replace("-", "/", 1)
+    name = _alias_map().get(name, name)
+    if "/" not in name:
+        first_segment = name.split("-", 1)[0]
+        if first_segment in CATEGORY_DIRS:
+            name = name.replace("-", "/", 1)
+    return name
+
+
+def service_for_profile(profile: str, fallback: str = "") -> str:
+    category = profile.split("/", 1)[0] if "/" in profile else ""
+    if category in ("small", "medium"):
+        return f"eliza-{category}"
+    return fallback or profile
 
 
 def normalize_timestamp(value: Any) -> str:
@@ -95,13 +134,11 @@ def load_ledger(ledger_path: pathlib.Path) -> list[dict[str, Any]]:
 
 
 def _profile_from_filename(service: str, middle: str, kind: str) -> str:
-    if kind == "voice-latency":
-        profile_dir = PROFILE_DIRS.get(service, service)
-        return f"{profile_dir}/{middle}"
-    first_segment = middle.split("-", 1)[0]
-    if re.fullmatch(r"[a-z]+", first_segment) and f"{first_segment}-" in middle:
-        return middle.replace("-", "/", 1)
-    return middle
+    profile = canonical_profile_name(middle)
+    if "/" not in profile and kind == "voice-latency":
+        category = service.removeprefix("eliza-") or "voice"
+        profile = f"{category}/{profile}"
+    return profile
 
 
 def scan_result_files(results_dir: pathlib.Path) -> list[dict[str, Any]]:
@@ -112,17 +149,19 @@ def scan_result_files(results_dir: pathlib.Path) -> list[dict[str, Any]]:
         match = FILE_NAME_PATTERN.match(path.name)
         if not match:
             continue
-        benchmark_type = KIND_TO_TYPE[match.group("kind")]
+        kind = match.group("kind")
+        benchmark_type = KIND_TO_TYPE.get(kind, "token-generation")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
             continue
-        service = str(data.get("service") or "") or match.group("service")
-        profile = str(data.get("profile") or "") or _profile_from_filename(
-            service, match.group("middle"), match.group("kind")
+        service = str(data.get("service") or "") or match.group("service") or ""
+        profile = canonical_profile_name(str(data.get("profile") or "")) or _profile_from_filename(
+            service or "", match.group("middle"), kind
         )
+        service = service or service_for_profile(profile)
         runs.append(
             {
                 "service": service,
@@ -138,24 +177,28 @@ def scan_result_files(results_dir: pathlib.Path) -> list[dict[str, Any]]:
 
 
 def collect_runs(results_dir: pathlib.Path) -> tuple[list[dict[str, Any]], str]:
-    ledger_path = results_dir / "runs.jsonl"
-    ledger_runs = load_ledger(ledger_path)
-    if ledger_runs:
-        return ledger_runs, f"ledger `{ledger_path.name}` ({len(ledger_runs)} runs)"
+    ledger_runs = load_ledger(results_dir / "runs.jsonl")
     file_runs = scan_result_files(results_dir)
-    return file_runs, f"result JSON files in `{results_dir}` ({len(file_runs)} runs)"
+    seen_files = {str(run.get("result_file", "")) for run in ledger_runs if run.get("result_file")}
+    extra_runs = [run for run in file_runs if run["result_file"] not in seen_files]
+    runs = ledger_runs + extra_runs
+    for run in runs:
+        run["profile"] = canonical_profile_name(str(run.get("profile", "")))
+        run["service"] = str(run.get("service") or "") or service_for_profile(run["profile"])
+    return runs, f"ledger and result files in `{results_dir}` ({len(runs)} runs)"
 
 
 def select_runs(runs: list[dict[str, Any]], all_runs: bool) -> list[dict[str, Any]]:
+    sort_key = lambda run: (run["profile"], run["service"], run["type"], normalize_timestamp(run.get("timestamp")))
     if all_runs:
-        return sorted(runs, key=lambda run: (run["service"], run["profile"], run["type"], normalize_timestamp(run.get("timestamp"))))
+        return sorted(runs, key=sort_key)
     latest: dict[tuple[str, str, str], dict[str, Any]] = {}
     for run in runs:
-        key = (run["service"], run["profile"], run["type"])
+        key = (run["profile"], run["service"], run["type"])
         current = latest.get(key)
-        if current is None or normalize_timestamp(run.get("timestamp")) > normalize_timestamp(current.get("timestamp")):
+        if current is None or normalize_timestamp(run.get("timestamp")) >= normalize_timestamp(current.get("timestamp")):
             latest[key] = run
-    return sorted(latest.values(), key=lambda run: (run["service"], run["profile"], run["type"]))
+    return sorted(latest.values(), key=sort_key)
 
 
 def _format_cell(value: Any, spec: str) -> str:
@@ -180,14 +223,14 @@ def _format_run_time(value: Any) -> str:
 
 def _type_table(benchmark_type: str, runs: list[dict[str, Any]], all_runs: bool) -> list[str]:
     columns = COLUMNS[benchmark_type]
-    headers = ["Profile"]
+    headers = ["Model", "Service"]
     if all_runs:
         headers.append("Run (UTC)")
     headers.extend(label for label, _, _ in columns)
 
     lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for run in runs:
-        cells = [f"`{run['profile']}`"]
+        cells = [f"`{run['profile']}`", run["service"]]
         if all_runs:
             cells.append(_format_run_time(run.get("timestamp")))
         metrics = run.get("metrics", {})
@@ -206,29 +249,22 @@ def render_markdown(
     lines = [
         "# Benchmark Results",
         "",
-        f"_Generated {generated_at} from {source_description} in `{results_dir}`._",
+        f"_Generated {generated_at} from {source_description}._",
         "",
     ]
 
-    by_service: dict[str, list[dict[str, Any]]] = {}
-    for run in runs:
-        by_service.setdefault(run["service"], []).append(run)
-
-    for service in sorted(by_service):
-        service_runs = by_service[service]
-        lines.extend([f"## {service}", ""])
-        for benchmark_type in TYPE_ORDER:
-            type_runs = [run for run in service_runs if run["type"] == benchmark_type]
-            if not type_runs:
-                continue
-            lines.append(f"### {TYPE_LABELS[benchmark_type]}")
-            lines.append("")
-            lines.extend(_type_table(benchmark_type, type_runs, all_runs))
-            lines.append("")
+    for benchmark_type in TYPE_ORDER:
+        type_runs = [run for run in runs if run["type"] == benchmark_type]
+        if not type_runs:
+            continue
+        lines.append(f"## {TYPE_LABELS[benchmark_type]}")
+        lines.append("")
+        lines.extend(_type_table(benchmark_type, type_runs, all_runs))
+        lines.append("")
 
     lines.extend(["## Sources", ""])
     for run in runs:
-        source = f"- `{run['service']}` / `{run['profile']}` — {run['type']}: {_format_run_time(run.get('timestamp'))}"
+        source = f"- `{run['profile']}` ({run['service']}) — {run['type']}: {_format_run_time(run.get('timestamp'))}"
         if run.get("result_file"):
             source += f" (`{run['result_file']}`)"
         lines.append(source)
@@ -237,7 +273,7 @@ def render_markdown(
         [
             "",
             "---",
-            "_Regenerate: `./scripts/run-benchmark compare`_",
+            "_Regenerate: `eliza-cli bench compare`_",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -268,7 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.service:
         runs = [run for run in runs if run["service"] == args.service]
     if args.profile:
-        runs = [run for run in runs if run["profile"] == args.profile]
+        wanted_profile = canonical_profile_name(args.profile)
+        runs = [run for run in runs if run["profile"] == wanted_profile]
 
     if not runs:
         print(
