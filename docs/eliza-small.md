@@ -27,6 +27,12 @@ Port: 8002
 | `small/gemma4-12b-q4-llamacpp-8k` | llama.cpp | Gemma 4 12B | Larger Gemma profile on small tier |
 | `small/gemma4-e4b-vllm-8k` | vLLM | Gemma 4 E4B HF | vLLM profile for runtime comparison |
 | `small/gemma3-4b-q4-llamacpp-8k` | llama.cpp | Gemma 3 4B QAT | Smaller fallback profile |
+| `small/qwen3.5-2b-ud-q4-k-xl-llamacpp-128k` | llama.cpp | Qwen3.5 2B | Fast Qwen3.5 option (aliases: `small/qwen3.5-2b`) |
+| `small/qwen3.5-4b-ud-q4-k-xl-llamacpp-128k` | llama.cpp | Qwen3.5 4B | Stronger Qwen3.5 option (aliases: `small/qwen3.5-4b`) |
+
+Qwen3.5 small models are hybrid-attention (Gated DeltaNet + Gated Attention) with a
+vision projector and native 262K context; the chat template keeps thinking off
+unless enabled per request, which suits the low-latency voice role.
 
 ## Start And Test
 
