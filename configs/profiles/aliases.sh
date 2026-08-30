@@ -29,4 +29,6 @@ case "$profile" in
   small/gemma4-12b-quality|small/eliza-small-gemma4-12b-quality) profile="small/gemma4-12b-q4-llamacpp-8k" ;;
   small/gemma4-e4b-vllm-experimental|small/eliza-small-gemma4-e4b-vllm-experimental) profile="small/gemma4-e4b-vllm-8k" ;;
   small/gemma3-4b-stable|small/eliza-small-gemma3-4b-stable) profile="small/gemma3-4b-q4-llamacpp-8k" ;;
+  small/qwen3.5-2b|small/eliza-small-qwen3.5-2b) profile="small/qwen3.5-2b-ud-q4-k-xl-llamacpp-128k" ;;
+  small/qwen3.5-4b|small/eliza-small-qwen3.5-4b) profile="small/qwen3.5-4b-ud-q4-k-xl-llamacpp-128k" ;;
 esac
