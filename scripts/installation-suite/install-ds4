@@ -12,6 +12,7 @@ DS4_BIN="${DS4_BIN:-$HOME/.local/bin/ds4}"
 DS4_BUILD_TARGET="${DS4_BUILD_TARGET:-}"
 INSTALL_DS4="true"
 UPDATE_SOURCE="true"
+CHECK_ONLY="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -21,6 +22,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-update)
       UPDATE_SOURCE="false"
+      shift
+      ;;
+    --check)
+      CHECK_ONLY="true"
       shift
       ;;
     --dir)
@@ -39,16 +44,21 @@ while [[ $# -gt 0 ]]; do
       cat <<USAGE
 Usage: ./scripts/setup ds4 [options]
 
-Builds ds4 from source and links the binary for PATH usage.
+Builds ds4 (DwarfStar) from source and links its binaries for PATH usage.
 
 Options:
   --no-install  Skip build/install and only verify current binary.
   --no-update   Do not git pull an existing clean checkout.
+  --check       Only report how far the local checkout is behind upstream.
   --dir PATH    Source checkout path. Default: ~/src/ds4
-  --bin PATH    Install symlink path. Default: ~/.local/bin/ds4
+  --bin PATH    Install symlink path for the main ds4 binary.
+                Default: ~/.local/bin/ds4
   --build-target TARGET
-                 make target (for example: cpu, cuda-spark, cuda-generic).
-                 Default: auto-detected per platform.
+                 make target (for example: cpu, cuda-spark, cuda-generic,
+                 strix-halo). Default: auto-detected per platform.
+
+Model downloads are handled by the upstream helper, e.g.
+  ./scripts/download-models eliza-medium --profile medium/glm-5.3-flash-ds4-256k
 USAGE
       exit 0
       ;;
@@ -122,17 +132,38 @@ ensure_source_checkout() {
   git -C "$DS4_DIR" pull --ff-only
 }
 
+detect_build_target() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "all"
+    return 0
+  fi
+
+  if command -v nvcc >/dev/null 2>&1; then
+    local compute_cap=""
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      compute_cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 || true)"
+    fi
+    if [[ "$compute_cap" == 12.1* ]]; then
+      echo "cuda-spark"
+    else
+      echo "cuda-generic"
+    fi
+    return 0
+  fi
+
+  if command -v hipcc >/dev/null 2>&1; then
+    echo "strix-halo"
+    return 0
+  fi
+
+  echo "cpu"
+}
+
 build_ds4() {
   local target="$DS4_BUILD_TARGET"
 
   if [[ -z "$target" ]]; then
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-      target="all"
-    elif command -v nvcc >/dev/null 2>&1; then
-      target="cuda-spark"
-    else
-      target="cpu"
-    fi
+    target="$(detect_build_target)"
   fi
 
   echo "Building ds4 (target: $target)"
@@ -145,9 +176,21 @@ build_ds4() {
 }
 
 install_ds4_bin() {
-  mkdir -p "$(dirname "$DS4_BIN")"
+  local bin_dir name link
+  bin_dir="$(dirname "$DS4_BIN")"
+  mkdir -p "$bin_dir"
+
   ln -sfn "$DS4_DIR/ds4" "$DS4_BIN"
   echo "Linked ds4 binary: $DS4_BIN -> $DS4_DIR/ds4"
+
+  # ds4-server is the endpoint eliza-medium talks to; the rest are optional tools.
+  for name in ds4-server ds4-agent ds4-bench ds4-eval; do
+    if [[ -x "$DS4_DIR/$name" ]]; then
+      link="$bin_dir/$name"
+      ln -sfn "$DS4_DIR/$name" "$link"
+      echo "Linked ds4 binary: $link -> $DS4_DIR/$name"
+    fi
+  done
 }
 
 print_ds4_version() {
@@ -159,6 +202,62 @@ print_ds4_version() {
   fi
   "$DS4_BIN" --help 2>/dev/null | sed -n '1p' || true
 }
+
+report_upstream_drift() {
+  local remote_ref upstream local_sha local_date upstream_date behind ahead
+
+  if [[ ! -d "$DS4_DIR/.git" ]]; then
+    echo "ds4 checkout not found at $DS4_DIR. Run ./scripts/setup ds4 to clone and build." >&2
+    return 1
+  fi
+
+  remote_ref="$(git -C "$DS4_DIR" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [[ -z "$remote_ref" ]]; then
+    remote_ref="refs/remotes/origin/main"
+  fi
+
+  echo "Fetching upstream ds4 in $DS4_DIR"
+  if ! git -C "$DS4_DIR" fetch --quiet origin; then
+    echo "Could not fetch upstream ds4. Check network access." >&2
+    return 1
+  fi
+
+  if ! upstream="$(git -C "$DS4_DIR" rev-parse --verify "$remote_ref" 2>/dev/null)"; then
+    echo "Upstream ref not found locally: $remote_ref" >&2
+    return 1
+  fi
+
+  local_sha="$(git -C "$DS4_DIR" rev-parse HEAD)"
+  behind="$(git -C "$DS4_DIR" rev-list --count "HEAD..$upstream")"
+  ahead="$(git -C "$DS4_DIR" rev-list --count "$upstream..HEAD")"
+  local_date="$(git -C "$DS4_DIR" log -1 --format=%cI HEAD)"
+  upstream_date="$(git -C "$DS4_DIR" log -1 --format=%cI "$upstream")"
+
+  echo "ds4 checkout:  $DS4_DIR"
+  echo "  local:     ${local_sha:0:12}  $local_date"
+  echo "  upstream:  ${upstream:0:12}  $upstream_date"
+  echo "  behind:    $behind    ahead: $ahead"
+
+  if [[ -f "$DS4_DIR/download_model.sh" ]] &&
+    grep -q -- "glm53-q2" "$DS4_DIR/download_model.sh"; then
+    echo "  GLM 5.3 Flash download target: available"
+  else
+    echo "  GLM 5.3 Flash download target: missing (checkout too old for medium/glm-5.3-flash-ds4-256k)"
+  fi
+
+  if [[ "$behind" -gt 0 ]]; then
+    echo "ds4 is out of date: run ./scripts/setup ds4 to pull and rebuild."
+    return 1
+  fi
+
+  echo "ds4 is up to date with upstream."
+  return 0
+}
+
+if [[ "$CHECK_ONLY" == "true" ]]; then
+  report_upstream_drift
+  exit $?
+fi
 
 if [[ "$INSTALL_DS4" == "true" ]]; then
   install_prereqs

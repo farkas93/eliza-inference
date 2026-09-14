@@ -8,6 +8,7 @@ load_env
 
 DS4_DIR="${DS4_DIR:-$HOME/src/ds4}"
 DS4_BIN="${DS4_BIN:-$HOME/.local/bin/ds4}"
+DS4_TOOL_NAMES=(ds4-server ds4-agent ds4-bench ds4-eval)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -55,6 +56,26 @@ if [[ -x "$DS4_DIR/ds4" ]]; then
 else
   echo "[skip] built ds4 binary not found: $DS4_DIR/ds4"
 fi
+
+for name in "${DS4_TOOL_NAMES[@]}"; do
+  link="$(dirname "$DS4_BIN")/$name"
+  if [[ -L "$link" ]]; then
+    target="$(readlink -f "$link")"
+    if [[ "$target" == "$DS4_DIR"/* ]]; then
+      echo "Removing ds4 tool symlink: $link"
+      rm -f "$link"
+    else
+      echo "[skip] symlink target is outside DS4_DIR: $link -> $target"
+    fi
+  elif [[ -e "$link" ]]; then
+    echo "[skip] $link exists but is not managed symlink"
+  fi
+
+  if [[ -x "$DS4_DIR/$name" ]]; then
+    echo "Removing built ds4 binary: $DS4_DIR/$name"
+    rm -f "$DS4_DIR/$name"
+  fi
+done
 
 cat <<EOF
 
