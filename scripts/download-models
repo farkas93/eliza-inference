@@ -65,6 +65,38 @@ case "$SERVICE" in
         echo "No ds4 model source configured. Set MODEL_REPO/MODEL_FILE, DS4_MODEL_PRESET, or install ds4 with download_model.sh" >&2
         exit 1
       fi
+    elif [[ "${BACKEND:-vllm}" == "flash" ]]; then
+      flash_repo="${FLASH_REPO:-$HOME/src/qwen3.8-Flash-DGX}"
+      flash_image="${FLASH_IMAGE:-qwen38-flash-dgx}"
+      flash_model="${FLASH_MODEL:-nvidia/Qwen3.8-Flash-Next-NVFP4}"
+      flash_cache="${FLASH_HF_CACHE:-$HF_HOME}"
+
+      if [[ ! -x "$flash_repo/scripts/download-weights.sh" ]]; then
+        echo "flash recipe not found at $flash_repo. Run ./scripts/setup flash first." >&2
+        exit 1
+      fi
+
+      if ! docker image inspect "$flash_image" >/dev/null 2>&1; then
+        echo "flash image $flash_image is not built. Run ./scripts/setup flash first." >&2
+        exit 1
+      fi
+
+      mkdir -p "$flash_cache"
+      IMAGE="$flash_image" MODEL="$flash_model" HF_CACHE="$flash_cache" \
+      XET="${FLASH_XET:-1}" MAX_WORKERS="${FLASH_MAX_WORKERS:-8}" EXCLUDE="${FLASH_EXCLUDE:-}" \
+        "$flash_repo/scripts/download-weights.sh"
+
+      case "${FLASH_MODE:-hybrid}" in
+        hybrid)
+          if [[ "${FLASH_PREPARE_HYBRID:-true}" == "true" ]]; then
+            IMAGE="$flash_image" MODEL="$flash_model" HF_CACHE="$flash_cache" \
+              "$flash_repo/scripts/prepare-hybrid.sh"
+          fi
+          ;;
+        hybrid-mtp)
+          echo "FLASH_MODE=hybrid-mtp also needs $flash_repo/scripts/prepare-mtp-graft.sh (RadixArk checkpoints only)." >&2
+          ;;
+      esac
     else
       snapshot_dir="${MODEL_DIR:-$HF_HOME/hub/$MODEL_ID}"
       echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID into $snapshot_dir"

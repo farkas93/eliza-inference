@@ -339,12 +339,64 @@ class Executor:
             update_hint="Pull latest source and rebuild",
         )
 
+    def _probe_flash(self, env_values: dict[str, str]) -> BackendRuntime:
+        repo_dir = pathlib.Path(env_values.get("FLASH_REPO", str(pathlib.Path.home() / "src" / "qwen3.8-Flash-DGX"))).expanduser()
+        image = env_values.get("FLASH_IMAGE", "qwen38-flash-dgx")
+
+        if not shutil.which("docker"):
+            return BackendRuntime(
+                name="flash",
+                installed=False,
+                version="-",
+                status="missing",
+                location=str(repo_dir),
+                update_hint="Install docker with the NVIDIA container toolkit, then ./scripts/setup flash",
+            )
+
+        if not (repo_dir / "scripts" / "serve.sh").exists():
+            return BackendRuntime(
+                name="flash",
+                installed=False,
+                version="-",
+                status="missing",
+                location=str(repo_dir),
+                update_hint="Install the recipe with ./scripts/setup flash",
+            )
+
+        version = self._first_line_from_command(["docker", "image", "inspect", "-f", "{{.Id}}", image])
+        if not version:
+            return BackendRuntime(
+                name="flash",
+                installed=True,
+                version="-",
+                status="partial",
+                location=str(repo_dir),
+                update_hint=f"Build the {image} image with ./scripts/setup flash",
+            )
+
+        notes = ""
+        container = env_values.get("FLASH_CONTAINER", "qwen38-flash")
+        state = self._first_line_from_command(["docker", "inspect", "-f", "{{.State.Status}}", container])
+        if state:
+            notes = f"container {container}: {state}"
+
+        return BackendRuntime(
+            name="flash",
+            installed=True,
+            version=version[:19],
+            status="installed",
+            location=str(repo_dir),
+            update_hint="Pull latest recipe and rebuild the image",
+            notes=notes,
+        )
+
     def probe_backends(self) -> List[BackendRuntime]:
         env_values = self._load_env_values()
         return [
             self._probe_llamacpp(env_values),
             self._probe_sglang(env_values),
             self._probe_ds4(env_values),
+            self._probe_flash(env_values),
         ]
 
     def install_backend(
@@ -356,6 +408,7 @@ class Executor:
             "llamacpp": ["./scripts/setup", "llamacpp"],
             "sglang": ["./scripts/setup", "sglang"],
             "ds4": ["./scripts/setup", "ds4"],
+            "flash": ["./scripts/setup", "flash"],
         }
         command = command_map.get(backend_name)
         if command is None:
@@ -382,6 +435,7 @@ class Executor:
             "llamacpp": ["./scripts/installation-suite/uninstall-llamacpp"],
             "sglang": ["./scripts/installation-suite/uninstall-sglang"],
             "ds4": ["./scripts/installation-suite/uninstall-ds4"],
+            "flash": ["./scripts/installation-suite/uninstall-flash"],
         }
         command = command_map.get(backend_name)
         if command is None:
@@ -399,7 +453,7 @@ class Executor:
 
         if service_name in {"eliza-small", "eliza-medium"}:
             backend = self._profile_backend(profile_id)
-            if backend in {"llamacpp", "vllm", "sglang", "ds4"}:
+            if backend in {"llamacpp", "vllm", "sglang", "ds4", "flash"}:
                 commands.append(["./scripts/setup", backend])
         elif service_name == "stt":
             commands.append(["./scripts/setup", "stt", "--profile", profile_id])
@@ -435,6 +489,8 @@ class Executor:
                 self._emit_progress(progress_callback, "Ensuring runtime (vllm)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "ds4"]:
                 self._emit_progress(progress_callback, "Ensuring runtime (ds4)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "flash"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (flash)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "stt"]:
                 self._emit_progress(progress_callback, "Ensuring STT runtime")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "tts"]:

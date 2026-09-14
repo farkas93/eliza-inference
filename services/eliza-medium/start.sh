@@ -14,6 +14,9 @@ case "${BACKEND:-llamacpp}" in
   ds4)
     exec "$(dirname "$0")/start-ds4.sh"
     ;;
+  flash)
+    exec "$(dirname "$0")/start-flash.sh"
+    ;;
   *)
     echo "Unsupported eliza-medium backend: ${BACKEND:-}" >&2
     exit 2

@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+FLASH_REPO="${FLASH_REPO:-$HOME/src/qwen3.8-Flash-DGX}"
+FLASH_IMAGE="${FLASH_IMAGE:-qwen38-flash-dgx}"
+FLASH_CONTAINER="${FLASH_CONTAINER:-qwen38-flash}"
+FLASH_COMPILE_CACHE="${FLASH_COMPILE_CACHE:-qwen38-flash}"
+FLASH_HF_CACHE="${FLASH_HF_CACHE:-$HF_HOME}"
+REMOVE_IMAGE="false"
+REMOVE_REPO="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image)
+      REMOVE_IMAGE="true"
+      shift
+      ;;
+    --repo)
+      REMOVE_REPO="true"
+      shift
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: scripts/installation-suite/uninstall-flash [options]
+
+Stops and removes the flash container and its compile-cache volumes.
+The recipe checkout, the docker image and the downloaded checkpoint are
+preserved by default.
+
+Options:
+  --image   Also remove the docker image ($FLASH_IMAGE).
+  --repo    Also delete the recipe checkout ($FLASH_REPO).
+
+Checkpoints under the Hugging Face cache are never removed here.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[skip] docker not found; nothing to remove."
+  exit 0
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "The docker daemon is not reachable; cannot remove flash artifacts." >&2
+  exit 1
+fi
+
+state="$(docker inspect -f '{{.State.Status}}' "$FLASH_CONTAINER" 2>/dev/null || echo absent)"
+if [[ "$state" != "absent" ]]; then
+  echo "Removing flash container $FLASH_CONTAINER ($state)"
+  docker rm -f "$FLASH_CONTAINER" >/dev/null
+else
+  echo "[skip] flash container not present: $FLASH_CONTAINER"
+fi
+
+for volume in "${FLASH_COMPILE_CACHE}-vllm" "${FLASH_COMPILE_CACHE}-flashinfer"; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    echo "Removing compile cache volume: $volume"
+    docker volume rm "$volume" >/dev/null
+  fi
+done
+
+if [[ "$REMOVE_IMAGE" == "true" ]]; then
+  if docker image inspect "$FLASH_IMAGE" >/dev/null 2>&1; then
+    echo "Removing flash image: $FLASH_IMAGE"
+    docker rmi "$FLASH_IMAGE" >/dev/null
+  else
+    echo "[skip] flash image not present: $FLASH_IMAGE"
+  fi
+fi
+
+if [[ "$REMOVE_REPO" == "true" ]]; then
+  if [[ -d "$FLASH_REPO/.git" ]]; then
+    echo "Removing recipe checkout: $FLASH_REPO"
+    rm -rf "$FLASH_REPO"
+  else
+    echo "[skip] recipe checkout not found: $FLASH_REPO"
+  fi
+fi
+
+cat <<EOF
+
+flash reset complete.
+
+Preserved:
+  recipe checkout: $FLASH_REPO
+  image:           $FLASH_IMAGE
+  checkpoint:      $FLASH_HF_CACHE
+EOF

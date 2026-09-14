@@ -22,3 +22,14 @@ ds4 (DwarfStar) backends need their own runtime and model downloads:
 ```
 
 See `docs/eliza-medium.md` for context sizing and the ds4 memory guard.
+
+The `flash` backend serves Qwen3.8-Flash-Next from a patched vLLM image in Docker:
+
+```bash
+./scripts/setup flash
+./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-flash-docker-500k
+./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-flash-docker-500k
+```
+
+First boot takes 8-13 minutes and the recipe claims 0.80 of the unified pool, so stop the
+other services first.
