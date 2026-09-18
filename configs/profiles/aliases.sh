@@ -11,6 +11,11 @@ case "$profile" in
   medium/gemma4-26b-a4b-llamacpp-256k-experimental|medium/eliza-medium-gemma4-26b-a4b-llamacpp-256k-experimental) profile="medium/gemma4-26b-a4b-q4-llamacpp-256k" ;;
   medium/vllm-smoke-tinyllama|medium/eliza-medium-vllm-smoke-tinyllama) profile="medium/tinyllama-1_1b-vllm-2k" ;;
   medium/deepseek-v4-flash-ds4-256k|medium/eliza-medium-deepseek-v4-flash-ds4-256k) profile="medium/deepseek-v4-flash-ds4-256k" ;;
+  medium/glm-5.3-flash-ds4|medium/eliza-medium-glm-5.3-flash-ds4|medium/glm53-flash-ds4|medium/eliza-medium-glm53-flash-ds4) profile="medium/glm-5.3-flash-ds4-256k" ;;
+  medium/glm-5.3-flash-ds4-shared|medium/eliza-medium-glm-5.3-flash-ds4-shared) profile="medium/glm-5.3-flash-ds4-32k" ;;
+  medium/qwen3.8-flash-next-flash|medium/eliza-medium-qwen3.8-flash-next-flash|medium/qwen3.8-flash-next-docker|medium/eliza-medium-qwen3.8-flash-next-docker) profile="medium/qwen3.8-flash-next-flash-docker-500k" ;;
+  medium/qwen3.8-flash-next-flash-native|medium/qwen3.8-flash-next-docker-native) profile="medium/qwen3.8-flash-next-flash-docker-262k" ;;
+  medium/qwen3.8-flash-next-flash-1m|medium/qwen3.8-flash-next-docker-1m) profile="medium/qwen3.8-flash-next-flash-docker-1m" ;;
   medium/qwen3-coder-next-llamacpp|medium/eliza-medium-qwen3-coder-next-llamacpp) profile="medium/qwen3-coder-next-ud-q4-k-m-llamacpp-256k" ;;
   medium/qwen3-coder-next-sglang|medium/eliza-medium-qwen3-coder-next-sglang) profile="medium/qwen3-coder-next-sglang-256k" ;;
   medium/qwen3.6-27b-nvfp4-vllm|medium/eliza-medium-qwen3.6-27b-nvfp4-vllm) profile="medium/qwen3.6-27b-nvfp4-vllm-256k" ;;

@@ -128,6 +128,36 @@ class ModelManager:
         merged.update(profile_env)
         return self._expand_value(value, merged)
 
+    def _flash_snapshot_path(self, profile_env: Dict[str, str]) -> pathlib.Path:
+        default_model = "nvidia/Qwen3.8-Flash-Next-NVFP4"
+        cache_raw = profile_env.get("FLASH_HF_CACHE") or self.env["HF_HOME"]
+        model = default_model
+        try:
+            cache = pathlib.Path(self._resolve_value(cache_raw, profile_env)).expanduser()
+            model = self._resolve_value(profile_env.get("FLASH_MODEL") or default_model, profile_env).strip() or default_model
+        except ValueError:
+            cache = pathlib.Path(os.path.expanduser(cache_raw))
+        repo = cache / "hub" / f"models--{model.replace('/', '--')}"
+        snapshots = repo / "snapshots"
+
+        for ref in ("main", "master"):
+            try:
+                revision = (repo / "refs" / ref).read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if revision and (snapshots / revision).is_dir():
+                return snapshots / revision
+
+        if snapshots.is_dir():
+            candidates = [
+                path
+                for path in snapshots.iterdir()
+                if path.is_dir() and not path.name.endswith(("-fp8hybrid", "-fp8hybrid-mtpnvfp4"))
+            ]
+            if candidates:
+                return max(candidates, key=lambda path: path.stat().st_mtime)
+        return snapshots
+
     def _expected_paths_for_profile(self, profile: Profile) -> List[pathlib.Path]:
         profile_env = self._load_profile_env(profile)
         backend = profile_env.get("BACKEND", profile.backend)
@@ -154,6 +184,9 @@ class ModelManager:
             else:
                 hf_home = self._resolve_value(profile_env.get("HF_HOME", self.env["HF_HOME"]), profile_env)
                 paths.append((pathlib.Path(hf_home) / "hub" / model_id).resolve())
+
+        if backend == "flash":
+            paths.append(self._flash_snapshot_path(profile_env))
 
         if not paths and model_dir is not None:
             paths.append(model_dir)

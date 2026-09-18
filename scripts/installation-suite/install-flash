@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+FLASH_REPO="${FLASH_REPO:-$HOME/src/qwen3.8-Flash-DGX}"
+FLASH_REMOTE="${FLASH_REMOTE:-https://github.com/blazux/qwen3.8-Flash-DGX.git}"
+FLASH_IMAGE="${FLASH_IMAGE:-qwen38-flash-dgx}"
+FLASH_BASE="${FLASH_BASE:-preview}"
+FLASH_MODEL="${FLASH_MODEL:-nvidia/Qwen3.8-Flash-Next-NVFP4}"
+FLASH_HF_CACHE="${FLASH_HF_CACHE:-$HF_HOME}"
+BUILD_IMAGE="true"
+UPDATE_SOURCE="true"
+WITH_WEIGHTS="false"
+PREPARE_HYBRID="false"
+CHECK_ONLY="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-build)
+      BUILD_IMAGE="false"
+      shift
+      ;;
+    --no-update)
+      UPDATE_SOURCE="false"
+      shift
+      ;;
+    --with-weights)
+      WITH_WEIGHTS="true"
+      shift
+      ;;
+    --prepare-hybrid)
+      PREPARE_HYBRID="true"
+      shift
+      ;;
+    --check)
+      CHECK_ONLY="true"
+      shift
+      ;;
+    --dir)
+      FLASH_REPO="${2:-}"
+      shift 2
+      ;;
+    --image)
+      FLASH_IMAGE="${2:-}"
+      shift 2
+      ;;
+    --base)
+      FLASH_BASE="${2:-}"
+      shift 2
+      ;;
+    --model)
+      FLASH_MODEL="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/setup flash [options]
+
+Clones the Qwen3.8-Flash-DGX recipe and builds its patched vLLM image for the
+eliza-medium "flash" backend (Docker, DGX Spark / GB10).
+
+Options:
+  --no-build        Skip the docker image build.
+  --no-update       Do not git pull an existing clean checkout.
+  --with-weights    Also download the checkpoint (~124 GiB, resumable).
+  --prepare-hybrid  Also build the hybrid checkpoint layout (~13 GiB, ~10 min).
+  --check           Report what is missing or stale without changing anything.
+  --dir PATH        Recipe checkout path. Default: ~/src/qwen3.8-Flash-DGX
+  --image NAME      Docker image tag. Default: qwen38-flash-dgx
+  --base NAME       preview | v0.29 (Dockerfile vs Dockerfile.v0.29). Default: preview
+  --model NAME      Checkpoint id. Default: nvidia/Qwen3.8-Flash-Next-NVFP4
+
+Weights are opt-in here; ./scripts/download-models eliza-medium --profile <flash profile>
+does the same on demand. The checkpoint and the hybrid layout land in
+$FLASH_HF_CACHE.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+case "$FLASH_BASE" in
+  preview) DOCKERFILE="Dockerfile" ;;
+  v0.29) DOCKERFILE="Dockerfile.v0.29" ;;
+  *)
+    echo "Unsupported --base: $FLASH_BASE (expected preview or v0.29)" >&2
+    exit 2
+    ;;
+esac
+
+docker_ready() {
+  command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+install_prereqs() {
+  local missing=()
+  local cmd
+
+  for cmd in git docker; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing flash prerequisites: ${missing[*]}" >&2
+    echo "Install docker (with the NVIDIA container toolkit) and git, then rerun ./scripts/setup flash." >&2
+    exit 1
+  fi
+
+  if ! docker info >/dev/null 2>&1; then
+    echo "The docker daemon is not reachable. Is it running, and is this user in the docker group?" >&2
+    exit 1
+  fi
+
+  if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"' ||
+    command -v nvidia-ctk >/dev/null 2>&1 ||
+    compgen -G "/dev/dri" >/dev/null ||
+    ls /var/run/cdi/*.yaml >/dev/null 2>&1; then
+    echo "[ok] docker daemon is available with an NVIDIA runtime"
+  else
+    echo "[warn] no NVIDIA container runtime detected; 'docker run --gpus all' will fail." >&2
+    echo "       Install nvidia-container-toolkit before serving." >&2
+  fi
+}
+
+ensure_source_checkout() {
+  mkdir -p "$(dirname "$FLASH_REPO")"
+
+  if [[ ! -e "$FLASH_REPO" ]]; then
+    echo "Cloning the flash recipe into $FLASH_REPO"
+    git clone "$FLASH_REMOTE" "$FLASH_REPO"
+    return 0
+  fi
+
+  if [[ ! -d "$FLASH_REPO/.git" ]]; then
+    echo "Path exists but is not a git checkout: $FLASH_REPO" >&2
+    exit 1
+  fi
+
+  if [[ "$UPDATE_SOURCE" != "true" ]]; then
+    echo "Skipping recipe source update (--no-update)."
+    return 0
+  fi
+
+  local dirty
+  dirty="$(git -C "$FLASH_REPO" status --porcelain)"
+  if [[ -n "$dirty" ]]; then
+    echo "flash recipe checkout has local changes; refusing to pull:" >&2
+    git -C "$FLASH_REPO" status --short >&2
+    echo "Commit/stash those changes, rerun with --no-update, or set FLASH_REPO." >&2
+    exit 1
+  fi
+
+  echo "Updating the flash recipe in $FLASH_REPO"
+  git -C "$FLASH_REPO" pull --ff-only
+}
+
+build_flash_image() {
+  echo "Building flash image $FLASH_IMAGE ($DOCKERFILE); the base vLLM image is pulled on first build"
+  docker build -t "$FLASH_IMAGE" -f "$FLASH_REPO/$DOCKERFILE" "$FLASH_REPO"
+}
+
+flash_snapshot_dir() {
+  local repo="$FLASH_HF_CACHE/hub/models--${FLASH_MODEL//\//--}" rev
+  for rev in "$(cat "$repo/refs/main" 2>/dev/null || true)" "$(cat "$repo/refs/master" 2>/dev/null || true)"; do
+    if [[ -n "$rev" && -d "$repo/snapshots/$rev" ]]; then
+      printf '%s\n' "$repo/snapshots/$rev"
+      return 0
+    fi
+  done
+  local candidate
+  shopt -s nullglob
+  for candidate in "$repo"/snapshots/*/; do
+    case "$candidate" in
+      *-fp8hybrid*) continue ;;
+    esac
+    if [[ -d "$candidate" ]]; then
+      printf '%s\n' "${candidate%/}"
+      return 0
+    fi
+  done
+  shopt -u nullglob
+  return 1
+}
+
+download_flash_weights() {
+  if ! docker image inspect "$FLASH_IMAGE" >/dev/null 2>&1; then
+    echo "Cannot download weights: build $FLASH_IMAGE first (drop --no-build)." >&2
+    exit 1
+  fi
+  mkdir -p "$FLASH_HF_CACHE"
+  echo "Downloading $FLASH_MODEL into $FLASH_HF_CACHE (~124 GiB, resumable)"
+  IMAGE="$FLASH_IMAGE" MODEL="$FLASH_MODEL" HF_CACHE="$FLASH_HF_CACHE" \
+    "$FLASH_REPO/scripts/download-weights.sh"
+}
+
+prepare_hybrid_checkpoint() {
+  if ! docker image inspect "$FLASH_IMAGE" >/dev/null 2>&1; then
+    echo "Cannot prepare the hybrid layout: build $FLASH_IMAGE first." >&2
+    exit 1
+  fi
+  echo "Preparing the hybrid checkpoint layout (~10 min, ~13 GiB)"
+  IMAGE="$FLASH_IMAGE" MODEL="$FLASH_MODEL" HF_CACHE="$FLASH_HF_CACHE" \
+    "$FLASH_REPO/scripts/prepare-hybrid.sh"
+}
+
+report_flash_status() {
+  local remote_ref upstream local_sha behind snapshot problems=0
+
+  echo "flash backend status"
+
+  if [[ -d "$FLASH_REPO/.git" ]]; then
+    remote_ref="$(git -C "$FLASH_REPO" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+    if [[ -z "$remote_ref" ]]; then
+      remote_ref="refs/remotes/origin/main"
+    fi
+
+    if git -C "$FLASH_REPO" fetch --quiet origin 2>/dev/null; then
+      upstream="$(git -C "$FLASH_REPO" rev-parse --verify "$remote_ref" 2>/dev/null || true)"
+      local_sha="$(git -C "$FLASH_REPO" rev-parse HEAD)"
+      if [[ -n "$upstream" ]]; then
+        behind="$(git -C "$FLASH_REPO" rev-list --count "HEAD..$upstream")"
+        echo "  checkout:  $FLASH_REPO (${local_sha:0:12}, behind: $behind)"
+        if [[ "$behind" -gt 0 ]]; then
+          echo "  recipe is out of date: rerun ./scripts/setup flash"
+          problems=$((problems + 1))
+        fi
+      else
+        echo "  checkout:  $FLASH_REPO (upstream ref $remote_ref unavailable)"
+      fi
+    else
+      echo "  checkout:  $FLASH_REPO (could not fetch upstream)"
+    fi
+  else
+    echo "  checkout:  missing at $FLASH_REPO"
+    problems=$((problems + 1))
+  fi
+
+  if docker_ready; then
+    if docker image inspect "$FLASH_IMAGE" >/dev/null 2>&1; then
+      echo "  image:     $FLASH_IMAGE present"
+    else
+      echo "  image:     $FLASH_IMAGE not built"
+      problems=$((problems + 1))
+    fi
+  else
+    echo "  docker:    daemon unavailable"
+    problems=$((problems + 1))
+  fi
+
+  snapshot="$(flash_snapshot_dir || true)"
+  if [[ -n "$snapshot" ]]; then
+    echo "  weights:   $snapshot"
+    if [[ -f "${snapshot}-fp8hybrid/.prepared" ]]; then
+      echo "  hybrid:    prepared"
+    else
+      echo "  hybrid:    not prepared (needed by FLASH_MODE=hybrid)"
+      problems=$((problems + 1))
+    fi
+  else
+    echo "  weights:   $FLASH_MODEL not downloaded under $FLASH_HF_CACHE"
+    problems=$((problems + 1))
+  fi
+
+  if [[ "$problems" -gt 0 ]]; then
+    echo "$problems item(s) to fix before ./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-flash-docker-500k"
+    return 1
+  fi
+
+  echo "flash backend is ready."
+  return 0
+}
+
+if [[ "$CHECK_ONLY" == "true" ]]; then
+  report_flash_status
+  exit $?
+fi
+
+install_prereqs
+ensure_source_checkout
+
+if [[ "$BUILD_IMAGE" == "true" ]]; then
+  build_flash_image
+else
+  echo "Skipping image build (--no-build)."
+fi
+
+if [[ "$WITH_WEIGHTS" == "true" ]]; then
+  download_flash_weights
+fi
+
+if [[ "$PREPARE_HYBRID" == "true" ]]; then
+  prepare_hybrid_checkpoint
+fi
+
+if ! docker image inspect "$FLASH_IMAGE" >/dev/null 2>&1; then
+  echo "flash image $FLASH_IMAGE is still missing; run ./scripts/setup flash" >&2
+  exit 1
+fi
+
+cat <<EOF
+
+flash runtime is ready.
+
+Recipe checkout:
+$FLASH_REPO
+
+Image:
+$FLASH_IMAGE
+
+Next steps (weights are ~124 GiB):
+  ./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-flash-docker-500k
+  ./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-flash-docker-500k
+EOF
