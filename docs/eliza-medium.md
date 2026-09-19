@@ -23,6 +23,8 @@
 | `medium/qwen3.8-flash-next-flash-docker-500k` | flash | `500000` | Qwen3.8-Flash-Next on patched vLLM in Docker, hybrid + YaRN |
 | `medium/qwen3.8-flash-next-flash-docker-262k` | flash | `262144` | Same recipe at the native context, no YaRN |
 | `medium/qwen3.8-flash-next-flash-docker-1m` | flash | `1000000` | fp8 KV cache variant for maximum context |
+| `medium/qwen3.8-flash-next-ds4dfm-262k` | ds4dfm | `262144` | Native Rust-host DwarfStar, Q5 + BF16 SSD-PLE, MTP |
+| `medium/qwen3.8-flash-next-ds4dfm-524k` | ds4dfm | `524288` | Same artifact at the YaRN factor-2 context |
 
 ## Start
 
@@ -156,6 +158,88 @@ volumes and cuts init from ~122 s to ~41 s.
 The container runs with `--restart unless-stopped`, and the wrapper tails its logs, so the
 service is only healthy while the container runs. If the wrapper dies hard and the port stays
 taken, `./scripts/stop eliza-medium` or `docker rm -f qwen38-flash` clears it.
+
+## ds4dfm (Rust-host DwarfStar) backend
+
+`BACKEND=ds4dfm` runs [`Baekpica/ds4-dfm-rs`](https://github.com/Baekpica/ds4-dfm-rs), the
+Rust-host continuation of DwarfStar (`antirez → Entrpi → Baekpica`): Rust owns serving,
+scheduling, KV policy and memory admission, the C/CUDA kernels stay native, and the release
+target is exactly the DGX Spark / GB10. It is a native build — no Docker — and serves OpenAI
+Chat/Completions/Responses **and Anthropic Messages**, with N-bank continuous serving,
+disk-KV prefix reuse and an embedded MTP block.
+
+```bash
+./scripts/setup ds4dfm            # clone, cargo + make cuda-spark (pins Rust 1.98)
+./scripts/setup ds4dfm --check    # upstream drift, binaries, weights
+```
+
+Weights are Baekpica's `MQ-Q5-SSD-PLE-BF16` artifact (~173 GiB total: three Q5 main shards
+plus the shared BF16 SSD-PLE sidecars, which live under `MQ-Q6-SSD-PLE-BF16/ple/`; the
+download links `ple/` into the Q5 folder as upstream prescribes):
+
+```bash
+./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+./scripts/logs eliza-medium
+./scripts/smoke-test eliza-medium
+```
+
+The server is addressed as `qwen3.8-flash-next` on `ELIZA_MEDIUM_PORT` (8001), so clients
+and smoke tests are backend-agnostic. Qualified scope on one Spark: 262,144 one-bank and
+196,608 two-bank serving with MTP draft 2, YaRN factor 2 through 524,288 (the 524k profile;
+a complete 1M-token prompt is not claimed), still-image input (user messages only, at most
+four PNG/JPEG data URIs, 10 MiB decoded per image), and disk KV via `--kv-disk-dir`.
+Everything beyond those gates is marked unqualified upstream; keep to the qualified shapes.
+
+Knobs map through `DS4DFM_*`: `MODEL_ID`, `MAX_SEQS` (bank width), `MTP_DRAFT` (0 = off),
+`PREFIX_REUSE` (`off|exact|partial|auto`), `QWEN_BATCH`, `QWEN_PLE_CACHE_MB`,
+`QWEN_PLE_WORKERS`, `QWEN_PREFILL_CHUNK`, `MEM_FLOOR_GB`, `KV_TO_DISK`/`KV_DIR`/`KV_MB`,
+`EXTRA_ARGS`, and `PREFLIGHT` (runs `--check-config` and prints the resolved serving plan
+before starting). The official FP8 PLE sidecar can replace BF16 later with `DS4DFM_PLE_DIR`
+pointing at the extracted `PLE-FP8` directory — use a separate `--kv-disk-dir` per PLE
+format, since snapshots are format-tagged and cross-format restore is refused.
+
+### Weight owner and worker (manual)
+
+For restart-heavy operation, keep one weight owner alive and restart only workers. In a
+durable tmux session (not the service session):
+
+```bash
+DS4DFM=~/src/ds4-dfm-rs
+MODEL=$MODEL_HOME/ds4dfm/MQ-Q5-SSD-PLE-BF16/Qwen3.8-Flash-Next-MQ-Q5-SSD-PLE-BF16-00001-of-00003.gguf
+
+$DS4DFM/ds4_weight_server \
+  --base "$MODEL" \
+  --manifest /tmp/ds4dfm-weights.manifest \
+  --backend vmm \
+  --scope base \
+  --reserve-gb 32
+```
+
+Wait for both `broker listening` and `ready manifest=...`, then add to `.env` (tmux sessions
+do not inherit exported shell variables):
+
+```bash
+DS4_CUDA_WEIGHT_IPC_MANIFEST="/tmp/ds4dfm-weights.manifest"
+DS4_CUDA_WEIGHT_IPC_SCOPE="base"
+```
+
+and `./scripts/restart eliza-medium --profile ...` — the worker imports the owner's VMM
+ranges instead of re-uploading ~80 GiB. Never run a second full-model owner beside the
+first on the same box, and stop the worker and owner (in that order) before reclaiming
+memory.
+
+### Caveats
+
+- The fork is young (single maintainer, fast-moving); rerun `./scripts/setup ds4dfm --check`
+  before debugging, and rebuild after pulling.
+- Only the pinned artifact layouts are accepted; the base Q5 is the validated pairing (the
+  Uncensored BF16 main has a known partial-fork gate failure upstream).
+- Inherited default: a tool-call protocol reminder is injected into deep tools-armed
+  conversations (`DS4_TOOL_CALL_REMINDER=0` disables it). Disclose the knob position when
+  comparing benchmark numbers.
+- `GET /v1/stats` exposes `last_request` (`effective_lane`, `reuse_kind`,
+  `speculation_active`) — useful for verifying prefix reuse and MTP are actually active.
 
 ## Benchmark
 

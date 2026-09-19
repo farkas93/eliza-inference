@@ -13,6 +13,7 @@ Commands:
   llamacpp [options]      Build/install llama.cpp CUDA binaries
   sglang [options]        Install SGLang runtime and verify GPU stack
   ds4 [options]           Build/install ds4 from source
+  ds4dfm [options]        Build/install ds4-dfm-rs (Rust-host DwarfStar)
   flash [options]         Clone the Qwen3.8-Flash-DGX recipe and build its vLLM image
   stt [options]           Install STT runtime and verify profile
   tts [options]           Install TTS runtime and verify profile
@@ -60,6 +61,10 @@ case "$1" in
   ds4)
     shift
     exec "$SUITE_DIR/install-ds4" "$@"
+    ;;
+  ds4dfm)
+    shift
+    exec "$SUITE_DIR/install-ds4dfm" "$@"
     ;;
   flash)
     shift

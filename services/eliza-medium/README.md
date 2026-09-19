@@ -33,3 +33,15 @@ The `flash` backend serves Qwen3.8-Flash-Next from a patched vLLM image in Docke
 
 First boot takes 8-13 minutes and the recipe claims 0.80 of the unified pool, so stop the
 other services first.
+
+The `ds4dfm` backend serves the same model natively (no Docker) from the Rust-host
+DwarfStar build:
+
+```bash
+./scripts/setup ds4dfm
+./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+```
+
+See `docs/eliza-medium.md` for the qualified serving scope, knobs and the weight-owner
+runbook.

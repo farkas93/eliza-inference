@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+DS4DFM_DIR="${DS4DFM_DIR:-$HOME/src/ds4-dfm-rs}"
+DS4DFM_BINARIES=(ds4 ds4-server ds4-bench ds4-agent ds4_weight_server)
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      cat <<USAGE
+Usage: scripts/installation-suite/uninstall-ds4dfm
+
+Resets ds4-dfm-rs for a rebuild by removing the built Rust binaries from the
+checkout. The source checkout, the model artifacts and any KV disk cache are
+preserved. Run 'make clean' in the checkout to also remove C oracle binaries
+and object files.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+for name in "${DS4DFM_BINARIES[@]}"; do
+  if [[ -x "$DS4DFM_DIR/$name" ]]; then
+    echo "Removing built ds4dfm binary: $DS4DFM_DIR/$name"
+    rm -f "$DS4DFM_DIR/$name"
+  else
+    echo "[skip] built binary not found: $DS4DFM_DIR/$name"
+  fi
+done
+
+cat <<EOF
+
+ds4dfm reset complete.
+
+Preserved source checkout:
+$DS4DFM_DIR
+
+Reinstall with:
+  ./scripts/setup ds4dfm
+EOF
