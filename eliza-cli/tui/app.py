@@ -786,7 +786,7 @@ class ElizaTUI(App):
         table_rows: list[dict[str, str]] = []
         for entry in self._sorted_filtered_model_entries():
             profiles = ", ".join(entry.linked_profiles) if entry.linked_profiles else "-"
-            status = "LINKED" if entry.status == "linked" else "ORPHAN"
+            status = entry.status.upper()
             table_rows.append(
                 {
                     "name": entry.name,
@@ -1359,6 +1359,10 @@ class ElizaTUI(App):
         entry = self.model_entries_by_path.get(model_path)
         if entry is None:
             self.notify("Selected model no longer exists", severity="error")
+            return
+
+        if entry.status == "missing":
+            self.notify("Model file is not present on disk; nothing to delete", severity="information")
             return
 
         if entry.linked_profiles:
