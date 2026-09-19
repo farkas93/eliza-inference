@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/common.sh"
+load_env
+
+DS4DFM_DIR="${DS4DFM_DIR:-$HOME/src/ds4-dfm-rs}"
+DS4DFM_REPO="${DS4DFM_REPO:-https://github.com/Baekpica/ds4-dfm-rs.git}"
+DS4DFM_BUILD_TARGET="${DS4DFM_BUILD_TARGET:-}"
+INSTALL_DS4DFM="true"
+UPDATE_SOURCE="true"
+CHECK_ONLY="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-install)
+      INSTALL_DS4DFM="false"
+      shift
+      ;;
+    --no-update)
+      UPDATE_SOURCE="false"
+      shift
+      ;;
+    --check)
+      CHECK_ONLY="true"
+      shift
+      ;;
+    --dir)
+      DS4DFM_DIR="${2:-}"
+      shift 2
+      ;;
+    --build-target)
+      DS4DFM_BUILD_TARGET="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<USAGE
+Usage: ./scripts/setup ds4dfm [options]
+
+Builds ds4-dfm-rs, the Rust-host DwarfStar continuation for DGX Spark, and
+leaves its binaries in the checkout. No PATH symlinks are created: the
+antirez ds4 runtime owns ds4-server there, and the eliza-medium ds4dfm
+wrapper addresses $DS4DFM_DIR/ds4-server directly.
+
+Options:
+  --no-install  Skip build/install and only verify current binaries.
+  --no-update   Do not git pull an existing clean checkout.
+  --check       Only report drift and binary status without changing anything.
+  --dir PATH    Source checkout path. Default: ~/src/ds4-dfm-rs
+  --build-target TARGET
+                 make target (cuda-spark, cuda-generic, cpu, or empty for a
+                 macOS Metal build). Default: auto-detected per platform.
+
+Model downloads are handled by:
+  ./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+install_prereqs() {
+  local missing=()
+  local cmd
+
+  for cmd in git make cc; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if ! command -v cargo >/dev/null 2>&1; then
+    missing+=("rustup/cargo")
+  fi
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing ds4dfm prerequisites: ${missing[*]}" >&2
+    echo "Install rustup (rust-toolchain.toml pins the Rust version) and build-essential, then rerun ./scripts/setup ds4dfm." >&2
+    exit 1
+  fi
+
+  if [[ "$(uname -s)" != "Darwin" ]] && ! command -v nvcc >/dev/null 2>&1; then
+    echo "[warn] nvcc not found; CUDA build targets need the NVIDIA CUDA toolkit." >&2
+    echo "       cpu builds work without it; install CUDA for cuda-spark/cuda-generic." >&2
+  fi
+
+  echo "[ok] ds4dfm build prerequisites are available (first build downloads cargo crates)"
+}
+
+ensure_source_checkout() {
+  mkdir -p "$(dirname "$DS4DFM_DIR")"
+
+  if [[ ! -e "$DS4DFM_DIR" ]]; then
+    echo "Cloning ds4-dfm-rs into $DS4DFM_DIR"
+    git clone "$DS4DFM_REPO" "$DS4DFM_DIR"
+    return 0
+  fi
+
+  if [[ ! -d "$DS4DFM_DIR/.git" ]]; then
+    echo "Path exists but is not a git checkout: $DS4DFM_DIR" >&2
+    exit 1
+  fi
+
+  if [[ "$UPDATE_SOURCE" != "true" ]]; then
+    echo "Skipping ds4dfm source update (--no-update)."
+    return 0
+  fi
+
+  local dirty
+  dirty="$(git -C "$DS4DFM_DIR" status --porcelain)"
+  if [[ -n "$dirty" ]]; then
+    echo "ds4dfm checkout has local changes; refusing to pull:" >&2
+    git -C "$DS4DFM_DIR" status --short >&2
+    echo "Commit/stash those changes, rerun with --no-update, or set DS4DFM_DIR." >&2
+    exit 1
+  fi
+
+  echo "Updating ds4-dfm-rs in $DS4DFM_DIR"
+  git -C "$DS4DFM_DIR" pull --ff-only
+}
+
+detect_build_target() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo ""
+    return 0
+  fi
+
+  if command -v nvcc >/dev/null 2>&1; then
+    local compute_cap=""
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      compute_cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 || true)"
+    fi
+    if [[ "$compute_cap" == 12.1* ]]; then
+      echo "cuda-spark"
+    else
+      echo "cuda-generic"
+    fi
+    return 0
+  fi
+
+  echo "cpu"
+}
+
+build_ds4dfm() {
+  local target="$DS4DFM_BUILD_TARGET"
+
+  if [[ -z "$target" ]]; then
+    target="$(detect_build_target)"
+  fi
+
+  if [[ -z "$target" ]]; then
+    echo "Building ds4-dfm-rs (macOS Metal default target)"
+    make -C "$DS4DFM_DIR"
+  else
+    echo "Building ds4-dfm-rs (target: $target)"
+    make -C "$DS4DFM_DIR" "$target"
+  fi
+
+  if [[ ! -x "$DS4DFM_DIR/ds4-server" ]]; then
+    echo "Expected ds4-server binary missing after build: $DS4DFM_DIR/ds4-server" >&2
+    exit 1
+  fi
+
+  if [[ ! -x "$DS4DFM_DIR/ds4_weight_server" ]]; then
+    echo "[warn] ds4_weight_server was not built; the weight-owner runbook needs it." >&2
+  fi
+}
+
+report_ds4dfm_status() {
+  local remote_ref upstream local_sha behind problems=0
+
+  echo "ds4dfm backend status"
+
+  if [[ -d "$DS4DFM_DIR/.git" ]]; then
+    remote_ref="$(git -C "$DS4DFM_DIR" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+    if [[ -z "$remote_ref" ]]; then
+      remote_ref="refs/remotes/origin/main"
+    fi
+
+    if git -C "$DS4DFM_DIR" fetch --quiet origin 2>/dev/null; then
+      upstream="$(git -C "$DS4DFM_DIR" rev-parse --verify "$remote_ref" 2>/dev/null || true)"
+      local_sha="$(git -C "$DS4DFM_DIR" rev-parse HEAD)"
+      if [[ -n "$upstream" ]]; then
+        behind="$(git -C "$DS4DFM_DIR" rev-list --count "HEAD..$upstream")"
+        echo "  checkout:  $DS4DFM_DIR (${local_sha:0:12}, behind: $behind)"
+        if [[ "$behind" -gt 0 ]]; then
+          echo "  recipe is out of date: rerun ./scripts/setup ds4dfm"
+          problems=$((problems + 1))
+        fi
+      else
+        echo "  checkout:  $DS4DFM_DIR (upstream ref $remote_ref unavailable)"
+      fi
+    else
+      echo "  checkout:  $DS4DFM_DIR (could not fetch upstream)"
+    fi
+  else
+    echo "  checkout:  missing at $DS4DFM_DIR"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -x "$DS4DFM_DIR/ds4-server" ]]; then
+    echo "  server:    $DS4DFM_DIR/ds4-server present"
+  else
+    echo "  server:    $DS4DFM_DIR/ds4-server not built"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -x "$DS4DFM_DIR/ds4_weight_server" ]]; then
+    echo "  owner:     $DS4DFM_DIR/ds4_weight_server present"
+  else
+    echo "  owner:     $DS4DFM_DIR/ds4_weight_server not built (optional but documented)"
+    problems=$((problems + 1))
+  fi
+
+  local shard_root="${MODEL_DIR:-${MODEL_HOME:-$HOME/models}/ds4dfm}/MQ-Q5-SSD-PLE-BF16"
+  if [[ -f "$shard_root/Qwen3.8-Flash-Next-MQ-Q5-SSD-PLE-BF16-00001-of-00003.gguf" ]]; then
+    echo "  weights:   $shard_root"
+    if [[ -e "$shard_root/ple" ]]; then
+      echo "  ple:       sidecar link present"
+    else
+      echo "  ple:       sidecar link missing (download-models creates it)"
+      problems=$((problems + 1))
+    fi
+  else
+    echo "  weights:   Qwen3.8-Flash-Next MQ-Q5 shard 1 not found under $shard_root"
+    problems=$((problems + 1))
+  fi
+
+  if [[ "$problems" -gt 0 ]]; then
+    echo "$problems item(s) to fix before ./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k"
+    return 1
+  fi
+
+  echo "ds4dfm backend is ready."
+  return 0
+}
+
+if [[ "$CHECK_ONLY" == "true" ]]; then
+  report_ds4dfm_status
+  exit $?
+fi
+
+if [[ "$INSTALL_DS4DFM" == "true" ]]; then
+  install_prereqs
+  ensure_source_checkout
+  build_ds4dfm
+else
+  echo "Skipping ds4dfm install (--no-install)."
+fi
+
+if [[ ! -x "$DS4DFM_DIR/ds4-server" ]]; then
+  echo "ds4-server is not executable at $DS4DFM_DIR/ds4-server" >&2
+  exit 1
+fi
+
+version="$("$DS4DFM_DIR/ds4-server" --version 2>/dev/null || true)"
+
+cat <<EOF
+
+ds4dfm runtime is ready.
+
+Source checkout:
+$DS4DFM_DIR
+
+Server:
+$DS4DFM_DIR/ds4-server${version:+ ($version)}
+
+Next steps (~173 GiB of weights):
+  ./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+  ./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ds4dfm-262k
+EOF

@@ -14,6 +14,9 @@ case "${BACKEND:-llamacpp}" in
   ds4)
     exec "$(dirname "$0")/start-ds4.sh"
     ;;
+  ds4dfm)
+    exec "$(dirname "$0")/start-ds4dfm.sh"
+    ;;
   flash)
     exec "$(dirname "$0")/start-flash.sh"
     ;;

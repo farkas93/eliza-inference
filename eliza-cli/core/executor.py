@@ -390,6 +390,30 @@ class Executor:
             notes=notes,
         )
 
+    def _probe_ds4dfm(self, env_values: dict[str, str]) -> BackendRuntime:
+        repo_dir = pathlib.Path(env_values.get("DS4DFM_DIR", str(pathlib.Path.home() / "src" / "ds4-dfm-rs"))).expanduser()
+        server_bin = pathlib.Path(env_values.get("DS4DFM_SERVER_BIN", str(repo_dir / "ds4-server"))).expanduser()
+
+        if not server_bin.exists() or not os.access(server_bin, os.X_OK):
+            return BackendRuntime(
+                name="ds4dfm",
+                installed=False,
+                version="-",
+                status="missing",
+                location=str(repo_dir),
+                update_hint="Build it with ./scripts/setup ds4dfm",
+            )
+
+        version = self._first_line_from_command([str(server_bin), "--version"])
+        return BackendRuntime(
+            name="ds4dfm",
+            installed=True,
+            version=version or "detected",
+            status="installed",
+            location=str(repo_dir),
+            update_hint="Pull latest source and rebuild",
+        )
+
     def probe_backends(self) -> List[BackendRuntime]:
         env_values = self._load_env_values()
         return [
@@ -397,6 +421,7 @@ class Executor:
             self._probe_sglang(env_values),
             self._probe_ds4(env_values),
             self._probe_flash(env_values),
+            self._probe_ds4dfm(env_values),
         ]
 
     def install_backend(
@@ -409,6 +434,7 @@ class Executor:
             "sglang": ["./scripts/setup", "sglang"],
             "ds4": ["./scripts/setup", "ds4"],
             "flash": ["./scripts/setup", "flash"],
+            "ds4dfm": ["./scripts/setup", "ds4dfm"],
         }
         command = command_map.get(backend_name)
         if command is None:
@@ -436,6 +462,7 @@ class Executor:
             "sglang": ["./scripts/installation-suite/uninstall-sglang"],
             "ds4": ["./scripts/installation-suite/uninstall-ds4"],
             "flash": ["./scripts/installation-suite/uninstall-flash"],
+            "ds4dfm": ["./scripts/installation-suite/uninstall-ds4dfm"],
         }
         command = command_map.get(backend_name)
         if command is None:
@@ -453,7 +480,7 @@ class Executor:
 
         if service_name in {"eliza-small", "eliza-medium"}:
             backend = self._profile_backend(profile_id)
-            if backend in {"llamacpp", "vllm", "sglang", "ds4", "flash"}:
+            if backend in {"llamacpp", "vllm", "sglang", "ds4", "flash", "ds4dfm"}:
                 commands.append(["./scripts/setup", backend])
         elif service_name == "stt":
             commands.append(["./scripts/setup", "stt", "--profile", profile_id])
@@ -489,6 +516,8 @@ class Executor:
                 self._emit_progress(progress_callback, "Ensuring runtime (vllm)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "ds4"]:
                 self._emit_progress(progress_callback, "Ensuring runtime (ds4)")
+            elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "ds4dfm"]:
+                self._emit_progress(progress_callback, "Ensuring runtime (ds4dfm)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "flash"]:
                 self._emit_progress(progress_callback, "Ensuring runtime (flash)")
             elif len(command) >= 2 and command[0:2] == ["./scripts/setup", "stt"]:

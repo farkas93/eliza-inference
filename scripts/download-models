@@ -97,6 +97,28 @@ case "$SERVICE" in
           echo "FLASH_MODE=hybrid-mtp also needs $flash_repo/scripts/prepare-mtp-graft.sh (RadixArk checkpoints only)." >&2
           ;;
       esac
+    elif [[ "${BACKEND:-vllm}" == "ds4dfm" ]]; then
+      mkdir -p "$MODEL_DIR"
+      ds4dfm_repo="${DS4DFM_HF_REPO:-Baekpica/Qwen3.8-Flash-Next-Mixed-Quant-SSD-PLE-GGUF}"
+      q5_dir="$MODEL_DIR/MQ-Q5-SSD-PLE-BF16"
+      echo "Downloading ds4dfm Qwen3.8 Flash Next artifacts from $ds4dfm_repo into $MODEL_DIR"
+      hf_download "$ds4dfm_repo" \
+        --include "MQ-Q5-SSD-PLE-BF16/*" \
+        --local-dir "$MODEL_DIR"
+      hf_download "$ds4dfm_repo" \
+        --include "MQ-Q6-SSD-PLE-BF16/ple/*" \
+        --local-dir "$MODEL_DIR"
+      if [[ ! -e "$q5_dir/ple" ]]; then
+        ln -sfn ../MQ-Q6-SSD-PLE-BF16/ple "$q5_dir/ple"
+        echo "Linked $q5_dir/ple -> ../MQ-Q6-SSD-PLE-BF16/ple (shared BF16 sidecar)"
+      fi
+      if [[ "${DS4DFM_VERIFY_ARTIFACTS:-false}" == "true" ]]; then
+        echo "Verifying artifacts against SHA256SUMS (reads ~173 GiB)"
+        (
+          cd "$q5_dir"
+          sha256sum --check SHA256SUMS
+        )
+      fi
     else
       snapshot_dir="${MODEL_DIR:-$HF_HOME/hub/$MODEL_ID}"
       echo "Downloading/syncing Hugging Face snapshot: $MODEL_ID into $snapshot_dir"
