@@ -193,8 +193,8 @@ Everything beyond those gates is marked unqualified upstream; keep to the qualif
 
 Knobs map through `DS4DFM_*`: `MODEL_ID`, `MAX_SEQS` (bank width), `MTP_DRAFT` (0 = off),
 `PREFIX_REUSE` (`off|exact|partial|auto`), `QWEN_BATCH`, `QWEN_PLE_CACHE_MB`,
-`QWEN_PLE_WORKERS`, `QWEN_PREFILL_CHUNK`, `MEM_FLOOR_GB`, `KV_TO_DISK`/`KV_DIR`/`KV_MB`,
-`EXTRA_ARGS`, and `PREFLIGHT` (runs `--check-config` and prints the resolved serving plan
+`QWEN_PLE_WORKERS`, `QWEN_PREFILL_CHUNK`, `MEM_FLOOR_GB`, `MEMGOV` (`observe|enforce`),
+`KV_TO_DISK`/`KV_DIR`/`KV_MB`, `EXTRA_ARGS`, and `PREFLIGHT` (runs `--check-config` and prints the resolved serving plan
 before starting). The official FP8 PLE sidecar can replace BF16 later with `DS4DFM_PLE_DIR`
 pointing at the extracted `PLE-FP8` directory — use a separate `--kv-disk-dir` per PLE
 format, since snapshots are format-tagged and cross-format restore is refused.

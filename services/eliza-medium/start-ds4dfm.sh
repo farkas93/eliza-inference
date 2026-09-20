@@ -62,9 +62,7 @@ case "${DS4DFM_BACKEND_DEVICE:-cuda}" in
     ;;
 esac
 
-if [[ -n "${DS4DFM_MEM_FLOOR_GB:-}" ]]; then
-  cmd+=(--mem-floor-gb "$DS4DFM_MEM_FLOOR_GB")
-fi
+cmd+=(--mem-floor-gb "${DS4DFM_MEM_FLOOR_GB:-2}")
 
 if [[ -n "${DS4DFM_MTP_DRAFT:-}" ]] && [[ "$DS4DFM_MTP_DRAFT" != "0" ]]; then
   cmd+=(--mtp-draft "$DS4DFM_MTP_DRAFT")
@@ -78,8 +76,13 @@ if [[ "$KV_TO_DISK" == "true" ]]; then
   )
 fi
 
+# ds4-dfm-rs memory governance settings for Spark unified memory.
+# observe mode and zero graph headroom prevent false quote_overflow at boot.
+export DS4_MEMGOV="${DS4DFM_MEMGOV:-observe}"
+export DS4_SESSION_GRAPH_FIT="${DS4DFM_SESSION_GRAPH_FIT:-0}"
+export DS4_SESSION_GRAPH_HEADROOM_MB="${DS4DFM_SESSION_GRAPH_HEADROOM_MB:-0}"
 export DS4_QWEN_BATCH="${DS4DFM_QWEN_BATCH:-1}"
-export DS4_QWEN_PLE_CACHE_MB="${DS4DFM_QWEN_PLE_CACHE_MB:-2048}"
+export DS4_QWEN_PLE_CACHE_MB="${DS4DFM_QWEN_PLE_CACHE_MB:-512}"
 export DS4_QWEN_PLE_WORKERS="${DS4DFM_QWEN_PLE_WORKERS:-16}"
 export DS4_QWEN_PREFILL_CHUNK="${DS4DFM_QWEN_PREFILL_CHUNK:-8192}"
 if [[ -n "${DS4DFM_PLE_DIR:-}" ]]; then

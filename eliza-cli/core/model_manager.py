@@ -20,6 +20,7 @@ _ENV_CACHE_TTL = 30.0
 _ENV_VAR_PATTERN = re.compile(
     r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))"
 )
+_SHARD_FILE_RE = re.compile(r"-(\d+)-of-(\d+)\.gguf$")
 
 
 @dataclass(frozen=True)
@@ -167,7 +168,7 @@ class ModelManager:
             model_dir = pathlib.Path(self._resolve_value(model_dir_raw, profile_env)).resolve()
 
         paths: List[pathlib.Path] = []
-        for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE"):
+        for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE", "SIDECAR_DIR"):
             value = profile_env.get(key)
             if value and model_dir is not None:
                 paths.append((model_dir / value).resolve())
@@ -214,6 +215,27 @@ class ModelManager:
                 except OSError:
                     continue
         return total
+
+    def _display_size(self, path: pathlib.Path) -> int:
+        if not path.exists():
+            return 0
+        if not path.is_file():
+            return self._compute_size(path)
+        match = _SHARD_FILE_RE.search(path.name)
+        if not match:
+            return self._compute_size(path)
+        width = len(match.group(1))
+        count = int(match.group(2))
+        prefix = path.name[: match.start()]
+        total = 0
+        for index in range(1, count + 1):
+            shard = path.with_name(f"{prefix}-{index:0{width}d}-of-{count:0{width}d}.gguf")
+            if shard.is_file():
+                try:
+                    total += shard.stat().st_size
+                except OSError:
+                    continue
+        return total or self._compute_size(path)
 
     def _estimate_download_size(self, profile: Profile) -> int | None:
         """Query HF API to estimate download size for a profile. Results cached for _SIZE_CACHE_TTL seconds."""
@@ -320,18 +342,17 @@ class ModelManager:
         profile_paths: Dict[pathlib.Path, set[str]] = {}
         for profile in profiles.values():
             for expected_path in self._expected_paths_for_profile(profile):
-                existing_path = expected_path if expected_path.exists() else expected_path.parent
-                profile_paths.setdefault(existing_path.resolve(), set()).add(profile.name)
+                profile_paths.setdefault(expected_path.resolve(), set()).add(profile.name)
 
         model_entries: Dict[pathlib.Path, ModelEntry] = {}
         for path, linked_profiles in profile_paths.items():
-            size_bytes = self._compute_size(path)
+            size_bytes = self._display_size(path)
             entry = ModelEntry(
                 name=path.name or str(path),
                 path=str(path),
                 size_bytes=size_bytes,
                 linked_profiles=tuple(sorted(linked_profiles)),
-                status="linked",
+                status="linked" if path.exists() else "missing",
             )
             model_entries[path] = entry
 
