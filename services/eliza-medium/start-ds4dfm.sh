@@ -42,6 +42,15 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   exit 1
 fi
 
+# The published sidecar lives under MQ-Q6, while the runtime expects the
+# conventional ple/ link beside the first MQ-Q5 shard. Repair old downloads
+# without forcing a full model re-download.
+PLE_LINK="$(dirname "$MODEL_PATH")/ple"
+PLE_TARGET="$(dirname "$MODEL_PATH")/../MQ-Q6-SSD-PLE-BF16/ple"
+if [[ ! -e "$PLE_LINK" && -d "$PLE_TARGET" ]]; then
+  ln -sfn "$PLE_TARGET" "$PLE_LINK"
+fi
+
 cmd=(
   "$DS4DFM_SERVER_BIN"
   -m "$MODEL_PATH"

@@ -171,7 +171,14 @@ class ModelManager:
         for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE", "SIDECAR_DIR"):
             value = profile_env.get(key)
             if value and model_dir is not None:
-                paths.append((model_dir / value).resolve())
+                path = model_dir / value
+                if key == "SIDECAR_DIR" and not path.exists():
+                    # Older downloads may have the shared sidecar without the
+                    # runtime symlink beside the first GGUF shard.
+                    canonical_sidecar = model_dir / "MQ-Q6-SSD-PLE-BF16" / "ple"
+                    if canonical_sidecar.exists():
+                        path = canonical_sidecar
+                paths.append(path.resolve())
 
         for key in ("PIPER_VOICE_PATH", "PIPER_CONFIG_PATH"):
             value = profile_env.get(key)
