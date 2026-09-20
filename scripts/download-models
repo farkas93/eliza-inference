@@ -102,6 +102,14 @@ case "$SERVICE" in
       ds4dfm_repo="${DS4DFM_HF_REPO:-Baekpica/Qwen3.8-Flash-Next-Mixed-Quant-SSD-PLE-GGUF}"
       q5_dir="$MODEL_DIR/MQ-Q5-SSD-PLE-BF16"
       echo "Downloading ds4dfm Qwen3.8 Flash Next artifacts from $ds4dfm_repo into $MODEL_DIR"
+      if [[ -f "$MODEL_DIR/$MODEL_FILE" && -d "$MODEL_DIR/MQ-Q6-SSD-PLE-BF16/ple" ]]; then
+        if [[ ! -e "$q5_dir/ple" ]]; then
+          ln -sfn ../MQ-Q6-SSD-PLE-BF16/ple "$q5_dir/ple"
+          echo "Repaired $q5_dir/ple -> ../MQ-Q6-SSD-PLE-BF16/ple (existing sidecar)"
+        fi
+        echo "ds4dfm artifacts already present; skipping download"
+        exit 0
+      fi
       hf_download "$ds4dfm_repo" \
         --include "MQ-Q5-SSD-PLE-BF16/*" \
         --local-dir "$MODEL_DIR"

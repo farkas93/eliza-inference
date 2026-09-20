@@ -136,7 +136,7 @@ class ModelPathTest(unittest.TestCase):
                         'BACKEND="ds4dfm"',
                         'MODEL_DIR="$MODEL_HOME/ds4dfm"',
                         'MODEL_FILE="MQ-Q5-SSD-PLE-BF16/Qwen3.8-Flash-Next-MQ-Q5-SSD-PLE-BF16-00001-of-00003.gguf"',
-                        'SIDECAR_DIR="MQ-Q6-SSD-PLE-BF16/ple"',
+                        'SIDECAR_DIR="MQ-Q5-SSD-PLE-BF16/ple"',
                     ]
                 ),
                 encoding="utf-8",
@@ -152,7 +152,7 @@ class ModelPathTest(unittest.TestCase):
 
             by_path = {entry.path: entry for entry in entries}
             expected_model_path = str((model_home / "ds4dfm" / "MQ-Q5-SSD-PLE-BF16" / "Qwen3.8-Flash-Next-MQ-Q5-SSD-PLE-BF16-00001-of-00003.gguf").resolve())
-            expected_sidecar_path = str((model_home / "ds4dfm" / "MQ-Q6-SSD-PLE-BF16" / "ple").resolve())
+            expected_sidecar_path = str((model_home / "ds4dfm" / "MQ-Q5-SSD-PLE-BF16" / "ple").resolve())
 
             self.assertIn(expected_model_path, by_path)
             self.assertEqual(by_path[expected_model_path].status, "missing")
@@ -199,7 +199,7 @@ class ModelPathTest(unittest.TestCase):
                         'BACKEND="ds4dfm"',
                         'MODEL_DIR="$MODEL_HOME/ds4dfm"',
                         'MODEL_FILE="MQ-Q5-SSD-PLE-BF16/Qwen3.8-Flash-Next-MQ-Q5-SSD-PLE-BF16-00001-of-00003.gguf"',
-                        'SIDECAR_DIR="MQ-Q6-SSD-PLE-BF16/ple"',
+                        'SIDECAR_DIR="MQ-Q5-SSD-PLE-BF16/ple"',
                     ]
                 ),
                 encoding="utf-8",
@@ -232,6 +232,42 @@ class ModelPathTest(unittest.TestCase):
 
             # Neither the parent folders nor ds4dfm should be orphan rows
             self.assertEqual([e for e in entries if e.status == "orphan"], [])
+
+    def test_sidecar_target_without_runtime_symlink_is_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = pathlib.Path(temporary_dir)
+            model_home = root / "models"
+            q5_dir = model_home / "ds4dfm" / "MQ-Q5-SSD-PLE-BF16"
+            q6_ple_dir = model_home / "ds4dfm" / "MQ-Q6-SSD-PLE-BF16" / "ple"
+            q5_dir.mkdir(parents=True)
+            q6_ple_dir.mkdir(parents=True)
+            model_file = q5_dir / "model-00001-of-00003.gguf"
+            model_file.write_bytes(b"weights")
+            (q6_ple_dir / "ple-00001.bin").write_bytes(b"sidecar")
+            (root / ".env").write_text(f'MODEL_HOME="{model_home}"\n', encoding="utf-8")
+            profile_path = root / "ds4dfm.env"
+            profile_path.write_text(
+                "\n".join(
+                    [
+                        'BACKEND="ds4dfm"',
+                        'MODEL_DIR="$MODEL_HOME/ds4dfm"',
+                        'MODEL_FILE="MQ-Q5-SSD-PLE-BF16/model-00001-of-00003.gguf"',
+                        'SIDECAR_DIR="MQ-Q5-SSD-PLE-BF16/ple"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            profile = types.SimpleNamespace(
+                name="medium/qwen3.8-flash-next-ds4dfm-262k",
+                path=str(profile_path),
+                backend="ds4dfm",
+            )
+
+            manager = ModelManager(root)
+            expected = manager._expected_paths_for_profile(profile)
+
+            self.assertIn(model_file.resolve(), expected)
+            self.assertIn(q6_ple_dir.resolve(), expected)
 
 
 if __name__ == "__main__":
