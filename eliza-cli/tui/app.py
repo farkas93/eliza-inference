@@ -669,21 +669,23 @@ class ElizaTUI(App):
         return markers
 
     def _profile_ready_now(self, profile_name: str) -> bool:
-        state = self.profile_states.get(profile_name)
-        if state is None or not state.expected_paths:
+        profile = self.stack.profiles.get(profile_name)
+        if profile is None:
             return False
-        return all(pathlib.Path(path_text).exists() for path_text in state.expected_paths)
+        paths = self.model_manager._expected_paths_for_profile(profile)
+        return bool(paths) and all(path.exists() for path in paths)
 
     def _profile_selection_label(self, profile: Profile, is_default: bool = False) -> str:
         state = self.profile_states.get(profile.name)
-        status = "[bold red]MISS[/bold red]"
+        # The picker can open before the background inventory has completed.
+        # Check local artifacts directly instead of freezing an empty snapshot.
+        ready = self._profile_ready_now(profile.name)
+        status = "[bold yellow]RDY[/bold yellow]" if ready else "[bold red]MISS[/bold red]"
         estimate = ""
         if state is not None:
             if state.deployed:
                 status = "[bold green]LIVE[/bold green]"
-            elif state.ready:
-                status = "[bold yellow]RDY[/bold yellow]"
-            if not state.ready and not state.deployed and state.estimated_download_size_bytes is not None:
+            if not ready and not state.deployed and state.estimated_download_size_bytes is not None:
                 estimate = f", ~{self._human_size(state.estimated_download_size_bytes)}"
         default_tag = " [dim](default)[/dim]" if is_default else ""
         return f"{status} {profile.name} ({profile.backend}{estimate}){default_tag}"
@@ -870,6 +872,15 @@ class ElizaTUI(App):
         self._profile_snapshot = new_profile_snapshot
         self._model_inventory_snapshot = new_model_snapshot
         self._refreshing_model_inventory = False
+        if isinstance(self.screen, ProfileSelectDialog):
+            dialog = self.screen
+            service = self.stack.services.get(dialog.service_name)
+            dialog.update_profile_labels({
+                profile.name: self._profile_selection_label(
+                    profile, is_default=bool(service and profile.name == service.profile_id)
+                )
+                for profile in dialog.profiles
+            })
 
     def _unlock_refresh(self) -> None:
         self._refreshing_model_inventory = False

@@ -6,7 +6,7 @@ import pathlib
 import re
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -169,10 +169,14 @@ class ModelManager:
 
         paths: List[pathlib.Path] = []
         for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE", "SIDECAR_DIR", "DRAFT_MODEL_FILE"):
+            if key == "MODEL_FILE" and profile_env.get("PIPER_VOICE_PATH"):
+                continue
+            if key == "MODEL_CONFIG_FILE" and profile_env.get("PIPER_CONFIG_PATH"):
+                continue
             value = profile_env.get(key)
             if value and model_dir is not None:
-                path = model_dir / value
-                if key == "SIDECAR_DIR" and not path.exists():
+                path = model_dir / self._resolve_value(value, profile_env)
+                if key == "SIDECAR_DIR" and backend == "ds4dfm" and not path.exists():
                     # Older downloads may have the shared sidecar without the
                     # runtime symlink beside the first GGUF shard.
                     canonical_sidecar = model_dir / "MQ-Q6-SSD-PLE-BF16" / "ple"
@@ -391,7 +395,22 @@ class ModelManager:
                     status="orphan",
                 )
 
-        return sorted(model_entries.values(), key=lambda entry: (entry.status, entry.path))
+        # Projectors and voice files often share a basename across distinct
+        # models. Show their owning directory rather than apparent duplicates.
+        names: dict[str, int] = {}
+        for entry in model_entries.values():
+            names[entry.name] = names.get(entry.name, 0) + 1
+        entries = []
+        for entry in model_entries.values():
+            if names[entry.name] > 1:
+                path = pathlib.Path(entry.path)
+                try:
+                    name = str(path.relative_to(self.model_home))
+                except ValueError:
+                    name = str(path)
+                entry = replace(entry, name=name)
+            entries.append(entry)
+        return sorted(entries, key=lambda entry: (entry.status, entry.path))
 
     def delete_entry_profile_files_only(
         self,
