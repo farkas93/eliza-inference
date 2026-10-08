@@ -45,6 +45,11 @@ case "$SERVICE" in
       hf_download "$MODEL_REPO" \
         --include "${HF_INCLUDE_MODEL:-$MODEL_FILE}" \
         --local-dir "$MODEL_DIR"
+      if [[ -n "${DRAFT_MODEL_FILE:-}" ]]; then
+        hf_download "${DRAFT_MODEL_REPO:-$MODEL_REPO}" \
+          --include "$DRAFT_MODEL_FILE" \
+          --local-dir "$MODEL_DIR"
+      fi
     elif [[ "${BACKEND:-vllm}" == "ds4" ]]; then
       mkdir -p "$MODEL_DIR"
       if [[ -n "${MODEL_REPO:-}" && -n "${MODEL_FILE:-}" ]]; then

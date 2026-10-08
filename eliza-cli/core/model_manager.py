@@ -168,7 +168,7 @@ class ModelManager:
             model_dir = pathlib.Path(self._resolve_value(model_dir_raw, profile_env)).resolve()
 
         paths: List[pathlib.Path] = []
-        for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE", "SIDECAR_DIR"):
+        for key in ("MODEL_FILE", "MMPROJ_FILE", "MODEL_CONFIG_FILE", "SIDECAR_DIR", "DRAFT_MODEL_FILE"):
             value = profile_env.get(key)
             if value and model_dir is not None:
                 path = model_dir / value
@@ -262,6 +262,7 @@ class ModelManager:
             repo = model_repo
             model_file = profile_env.get("MODEL_FILE", "").strip()
             mmproj_file = profile_env.get("MMPROJ_FILE", "").strip()
+            draft_model_file = profile_env.get("DRAFT_MODEL_FILE", "").strip()
             hf_include_model = profile_env.get("HF_INCLUDE_MODEL", "").strip()
             hf_include_config = profile_env.get("HF_INCLUDE_CONFIG", "").strip()
             model_config_file = profile_env.get("MODEL_CONFIG_FILE", "").strip()
@@ -273,6 +274,8 @@ class ModelManager:
                 include_patterns.append(model_file)
             if mmproj_file:
                 include_patterns.append(mmproj_file)
+            if draft_model_file:
+                include_patterns.append(draft_model_file)
         elif model_id:
             repo = model_id
             include_patterns = []  # entire snapshot

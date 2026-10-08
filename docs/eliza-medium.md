@@ -159,6 +159,44 @@ The container runs with `--restart unless-stopped`, and the wrapper tails its lo
 service is only healthy while the container runs. If the wrapper dies hard and the port stays
 taken, `./scripts/stop eliza-medium` or `docker rm -f qwen38-flash` clears it.
 
+## Unsloth Qwen3.8 Flash Next with llama.cpp MTP
+
+The MTP profiles reuse the existing Unsloth `UD-Q4_K_XL` shards and add the
+2.60 GB `MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf` head. Start with
+`medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-32k`; the larger profile is
+`medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-128k`.
+
+```bash
+./scripts/setup llamacpp --qwen-mtp
+./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-32k
+./scripts/restart eliza-medium --profile medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-32k
+./scripts/smoke-test eliza-medium
+```
+
+Setup pins `danielhanchen/llama.cpp` at
+`6fcaa16f4b360649933a54d1f91ad40ed35c0e11` in
+`~/src/llama.cpp-qwen-mtp`. This is the Unsloth-compatible shared-head
+implementation from PR #28243, not the newer upstream implementation from
+PR #29761, which uses a different artifact contract. Do not mix the shared
+head with an arbitrary upstream binary. The pinned source includes the MTP
+hyper-connection norm reshape fix. Profiles select this binary independently
+of the normal `LLAMA_SERVER_BIN`; override with `LLAMA_MTP_SERVER_BIN` or
+set `LLAMA_MTP_DIR` in `.env` to choose the checkout location.
+
+Both profiles use one slot, Q8 KV, flash attention, fixed context and 512-token
+microbatches. PLE tensor placement remains on CPU; on unified memory this is
+not a guarantee of zero RAM residency. No Spark performance result is claimed
+for this integration until measured on the target host.
+
+`SPEC_DRAFT_N_MAX=3` is the initial draft depth. Compare 2, 3 and 4 against a
+no-MTP run on the same pinned binary, with the same context, sampling and
+prompts. Record decode speed, TTFT, prefill, draft acceptance and peak memory.
+Check logs for `draft acceptance` to verify speculation really ran, then
+exercise multi-turn tool calls before increasing context. The TUI requires
+the draft file for MTP profile readiness and lists it as a separate artifact.
+Hugging Face synchronizes the existing main shards without downloading
+unchanged files again.
+
 ## ds4dfm (Rust-host DwarfStar) backend
 
 `BACKEND=ds4dfm` runs [`Baekpica/ds4-dfm-rs`](https://github.com/Baekpica/ds4-dfm-rs), the
