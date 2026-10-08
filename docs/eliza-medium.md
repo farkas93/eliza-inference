@@ -164,7 +164,18 @@ taken, `./scripts/stop eliza-medium` or `docker rm -f qwen38-flash` clears it.
 The MTP profiles reuse the existing Unsloth `UD-Q4_K_XL` shards and add the
 2.60 GB `MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf` head. Start with
 `medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-32k`; the larger profile is
-`medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-128k`.
+`medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-128k`. Full native context is
+available in `medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-256k`:
+
+```bash
+./scripts/restart eliza-medium --profile medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-mtp-256k
+```
+
+The 256k profile uses `CTX_SIZE=262144` and the same main/draft files, so switching
+from another MTP profile requires no additional artifacts. Memory fit and
+full-length prompt operation have not been verified on our Spark. The pinned
+runtime uses dense attention for the MTP draft head; measure long-prompt decode
+against a no-MTP baseline rather than assuming the short-prompt speedup persists.
 
 ```bash
 ./scripts/setup llamacpp --qwen-mtp
@@ -183,7 +194,7 @@ hyper-connection norm reshape fix. Profiles select this binary independently
 of the normal `LLAMA_SERVER_BIN`; override with `LLAMA_MTP_SERVER_BIN` or
 set `LLAMA_MTP_DIR` in `.env` to choose the checkout location.
 
-Both profiles use one slot, Q8 KV, flash attention, fixed context and 512-token
+All three profiles use one slot, Q8 KV, flash attention, fixed context and 512-token
 microbatches. PLE tensor placement remains on CPU; on unified memory this is
 not a guarantee of zero RAM residency. No Spark performance result is claimed
 for this integration until measured on the target host.
