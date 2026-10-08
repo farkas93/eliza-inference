@@ -41,6 +41,14 @@ class ProfileSelectDialog(ModalScreen[Profile | None]):
             self._closed = True
             self.dismiss(None)
 
+    def update_profile_labels(self, labels: dict[str, str]) -> None:
+        """Keep an open picker synchronized with background inventory refreshes."""
+        self.profile_labels = labels
+        for item_id, profile in self._profile_by_item_id.items():
+            self.query_one(f"#{item_id}", ListItem).query_one(Label).update(
+                labels.get(profile.name, profile.name)
+            )
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if self._closed:
             return
