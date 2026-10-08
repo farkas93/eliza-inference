@@ -168,17 +168,18 @@ class Executor:
         return profile_path
 
     def _profile_backend(self, profile_id: str) -> str:
-        backend = "llamacpp"
+        return self._profile_value(profile_id, "BACKEND") or "llamacpp"
+
+    def _profile_value(self, profile_id: str, field: str) -> str:
         profile_path = self._profile_path(profile_id)
         for line in profile_path.read_text(encoding="utf-8").splitlines():
             raw = line.strip()
             if not raw or raw.startswith("#") or "=" not in raw:
                 continue
             key, value = raw.split("=", 1)
-            if key.strip() == "BACKEND":
-                backend = value.strip().strip('"').strip("'")
-                break
-        return backend
+            if key.strip() == field:
+                return value.strip().strip('"').strip("'")
+        return ""
 
     def _load_env_values(self) -> dict[str, str]:
         env_values: dict[str, str] = {}
@@ -481,7 +482,10 @@ class Executor:
         if service_name in {"eliza-small", "eliza-medium"}:
             backend = self._profile_backend(profile_id)
             if backend in {"llamacpp", "vllm", "sglang", "ds4", "flash", "ds4dfm"}:
-                commands.append(["./scripts/setup", backend])
+                command = ["./scripts/setup", backend]
+                if backend == "llamacpp" and self._profile_value(profile_id, "LLAMA_RUNTIME") == "unsloth-mtp":
+                    command.append("--qwen-mtp")
+                commands.append(command)
         elif service_name == "stt":
             commands.append(["./scripts/setup", "stt", "--profile", profile_id])
         elif service_name == "tts":

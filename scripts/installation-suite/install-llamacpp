@@ -11,9 +11,19 @@ LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp}"
 BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
 CLEAN_BUILD="false"
 UPDATE_SOURCE="true"
+QWEN_MTP="false"
+# Legacy Unsloth shared heads require the pre-upstream MTP implementation.
+MTP_REVISION="6fcaa16f4b360649933a54d1f91ad40ed35c0e11"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --qwen-mtp)
+      QWEN_MTP="true"
+      LLAMA_CPP_DIR="${LLAMA_MTP_DIR:-$HOME/src/llama.cpp-qwen-mtp}"
+      LLAMA_CPP_REPO="https://github.com/danielhanchen/llama.cpp"
+      BUILD_DIR="$LLAMA_CPP_DIR/build"
+      shift
+      ;;
     --clean)
       CLEAN_BUILD="true"
       shift
@@ -29,11 +39,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/setup llamacpp [--clean] [--no-update] [--dir <path>]
+Usage: ./scripts/setup llamacpp [--qwen-mtp] [--clean] [--no-update] [--dir <path>]
 
 Builds llama.cpp with CUDA and curl support.
 
 Options:
+  --qwen-mtp Build the pinned Qwen3.8 Unsloth shared-MTP runtime in a separate checkout.
   --clean      Remove the build directory before configuring.
   --no-update  Do not git pull an existing clean llama.cpp checkout.
   --dir PATH   Source checkout path. Default: ~/src/llama.cpp
@@ -185,6 +196,19 @@ configure_and_build() {
     --target llama-server llama-cli llama-mtmd-cli
 }
 
+pin_mtp_source() {
+  local actual
+  actual="$(git -C "$LLAMA_CPP_DIR" rev-parse HEAD)"
+  if [[ "$actual" != "$MTP_REVISION" ]]; then
+    if [[ -n "$(git -C "$LLAMA_CPP_DIR" status --porcelain)" ]]; then
+      echo "MTP checkout has local changes; cannot select pinned revision" >&2
+      exit 1
+    fi
+    git -C "$LLAMA_CPP_DIR" fetch "$LLAMA_CPP_REPO" "$MTP_REVISION"
+    git -C "$LLAMA_CPP_DIR" checkout --detach "$MTP_REVISION"
+  fi
+}
+
 verify_binaries() {
   local binary
   for binary in llama-server llama-cli llama-mtmd-cli; do
@@ -200,6 +224,10 @@ verify_binaries() {
 }
 
 existing="$(existing_llama_server || true)"
+if [[ "$QWEN_MTP" == "true" ]]; then
+  existing=""
+  UPDATE_SOURCE="false"
+fi
 if [[ -n "$existing" && "$existing" != "$BUILD_DIR/bin/llama-server" ]]; then
   echo "llama-server already available: $existing"
   print_binary_version "$existing"
@@ -211,8 +239,20 @@ fi
 install_prereqs
 check_cuda_visibility
 ensure_source_checkout
+if [[ "$QWEN_MTP" == "true" ]]; then
+  pin_mtp_source
+fi
 configure_and_build
 verify_binaries
+if [[ "$QWEN_MTP" == "true" ]]; then
+  help_output="$("$BUILD_DIR/bin/llama-server" --help 2>&1)"
+  if [[ "$help_output" != *draft-mtp* ]]; then
+    echo "Built binary does not advertise draft-mtp support" >&2
+    exit 1
+  fi
+  echo "Pinned Unsloth-compatible Qwen MTP runtime ready: $MTP_REVISION"
+  exit 0
+fi
 
 cat <<EOF
 

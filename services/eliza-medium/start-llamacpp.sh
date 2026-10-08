@@ -2,6 +2,9 @@
 set -euo pipefail
 
 LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
+if [[ "${LLAMA_RUNTIME:-}" == "unsloth-mtp" ]]; then
+  LLAMA_SERVER_BIN="${LLAMA_MTP_SERVER_BIN:-${LLAMA_MTP_DIR:-$HOME/src/llama.cpp-qwen-mtp}/build/bin/llama-server}"
+fi
 MODEL_PATH="${MODEL_PATH:-${MODEL_DIR:?MODEL_DIR is required}/${MODEL_FILE:?MODEL_FILE is required}}"
 
 cmd=(
@@ -20,7 +23,31 @@ if [[ "${JINJA:-true}" == "true" ]]; then
 fi
 
 if [[ -n "${SPEC_TYPE:-}" ]]; then
+  if [[ "$SPEC_TYPE" == "draft-mtp" ]]; then
+    if [[ -z "${DRAFT_MODEL_FILE:-}" ]]; then
+      echo "draft-mtp requires DRAFT_MODEL_FILE" >&2
+      exit 1
+    fi
+    draft_path="${DRAFT_MODEL_PATH:-$MODEL_DIR/$DRAFT_MODEL_FILE}"
+    if [[ ! -f "$draft_path" ]]; then
+      echo "MTP draft head not found: $draft_path. Run scripts/download-models with this profile." >&2
+      exit 1
+    fi
+    help_output="$("$LLAMA_SERVER_BIN" --help 2>&1)" || {
+      echo "MTP runtime unavailable; run ./scripts/setup llamacpp --qwen-mtp" >&2
+      exit 1
+    }
+    if [[ "$help_output" != *draft-mtp* ]]; then
+      echo "Selected llama-server lacks draft-mtp support; run ./scripts/setup llamacpp --qwen-mtp" >&2
+      exit 1
+    fi
+    cmd+=(--model-draft "$draft_path" --spec-draft-n-max "${SPEC_DRAFT_N_MAX:-3}")
+  fi
   cmd+=(--spec-type "$SPEC_TYPE")
+fi
+
+if [[ -n "${MODEL_NAME:-}" ]]; then
+  cmd+=(--alias "$MODEL_NAME")
 fi
 
 if [[ -n "${REASONING:-}" ]]; then

@@ -24,6 +24,7 @@ Commands:
 Examples:
   ./scripts/setup prerequisites
   ./scripts/setup llamacpp --clean
+  ./scripts/setup llamacpp --qwen-mtp
   ./scripts/setup sglang
   ./scripts/setup ds4
   ./scripts/setup flash
