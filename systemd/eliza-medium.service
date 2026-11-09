@@ -4,11 +4,14 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
+Type=oneshot
+RemainAfterExit=yes
+KillMode=process
+OOMPolicy=continue
 WorkingDirectory=%h/private/eliza-inference
-ExecStart=%h/private/eliza-inference/scripts/start eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
-ExecStop=%h/private/eliza-inference/scripts/stop eliza-medium --profile medium/qwen3.8-27b-fp8-sglang-256k
-Restart=on-failure
+ExecStart=%h/private/eliza-inference/scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k
+ExecStop=%h/private/eliza-inference/scripts/stop eliza-medium
+# The supervisor inside tmux owns model crash recovery.
 
 [Install]
 WantedBy=default.target

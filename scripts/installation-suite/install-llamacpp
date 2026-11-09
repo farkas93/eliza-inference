@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/llamacpp-runtimes.sh"
 
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp}"
@@ -14,8 +16,8 @@ UPDATE_SOURCE="true"
 QWEN_MTP="false"
 QWEN4_MTP="false"
 # Legacy Unsloth shared heads require the pre-upstream MTP implementation.
-MTP_REVISION="6fcaa16f4b360649933a54d1f91ad40ed35c0e11"
-QWEN4_MTP_REVISION="f2ef14ea8b00877ed16e0145359ddb72652fa97c"
+MTP_REVISION="$LLAMA_LEGACY_MTP_REVISION"
+QWEN4_MTP_REVISION="$LLAMA_QWEN4_MTP_REVISION"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,6 +69,11 @@ USAGE
       ;;
   esac
 done
+
+if [[ "$QWEN_MTP" == "true" && "$QWEN4_MTP" == "true" ]]; then
+  echo "Select only one MTP runtime: --qwen-mtp or --qwen4-mtp" >&2
+  exit 2
+fi
 
 existing_llama_server() {
   if [[ -n "${LLAMA_SERVER_BIN:-}" && -x "${LLAMA_SERVER_BIN:-}" ]]; then
@@ -186,7 +193,7 @@ configure_and_build() {
     generator_args=(-G Ninja)
   fi
   if [[ "$QWEN4_MTP" == "true" ]]; then
-    cuda_arch_args=("-DCMAKE_CUDA_ARCHITECTURES=${LLAMA_CUDA_ARCHITECTURES:-121}")
+    cuda_arch_args=("-DCMAKE_CUDA_ARCHITECTURES=${LLAMA_CUDA_ARCHITECTURES:-121}" "-DGGML_CUDA_CCCL_VERSION=v3.4.3")
   fi
 
   if [[ "$CLEAN_BUILD" == "true" ]]; then
@@ -214,14 +221,18 @@ configure_and_build() {
 pin_mtp_source() {
   local revision="$1"
   local actual
+  if [[ -n "$(git -C "$LLAMA_CPP_DIR" status --porcelain)" ]]; then
+    echo "MTP checkout has local changes; refusing to build an unpinned runtime" >&2
+    exit 1
+  fi
   actual="$(git -C "$LLAMA_CPP_DIR" rev-parse HEAD)"
   if [[ "$actual" != "$revision" ]]; then
-    if [[ -n "$(git -C "$LLAMA_CPP_DIR" status --porcelain)" ]]; then
-      echo "MTP checkout has local changes; cannot select pinned revision" >&2
-      exit 1
-    fi
     git -C "$LLAMA_CPP_DIR" fetch "$LLAMA_CPP_REPO" "$revision"
     git -C "$LLAMA_CPP_DIR" checkout --detach "$revision"
+  fi
+  if ! grep -q 'LLM_GRAPH_TYPE_DECODER_MTP' "$LLAMA_CPP_DIR/src/models/qwen4exp.cpp"; then
+    echo "Pinned source lacks the Qwen4Exp MTP graph" >&2
+    exit 1
   fi
 }
 
@@ -266,6 +277,15 @@ if [[ "$QWEN_MTP" == "true" || "$QWEN4_MTP" == "true" ]]; then
   help_output="$("$BUILD_DIR/bin/llama-server" --help 2>&1)"
   if [[ "$help_output" != *draft-mtp* ]]; then
     echo "Built binary does not advertise draft-mtp support" >&2
+    exit 1
+  fi
+  expected_revision="$MTP_REVISION"
+  if [[ "$QWEN4_MTP" == "true" ]]; then
+    expected_revision="$QWEN4_MTP_REVISION"
+  fi
+  version_output="$("$BUILD_DIR/bin/llama-server" --version 2>&1)"
+  if [[ "$version_output" != *"${expected_revision:0:7}"* ]]; then
+    echo "Built binary does not match the pinned revision: $expected_revision" >&2
     exit 1
   fi
   if [[ "$QWEN4_MTP" == "true" ]]; then

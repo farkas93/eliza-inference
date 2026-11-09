@@ -672,8 +672,7 @@ class ElizaTUI(App):
         profile = self.stack.profiles.get(profile_name)
         if profile is None:
             return False
-        paths = self.model_manager._expected_paths_for_profile(profile)
-        return bool(paths) and all(path.exists() for path in paths)
+        return self.model_manager.profile_ready(profile)
 
     def _profile_selection_label(self, profile: Profile, is_default: bool = False) -> str:
         state = self.profile_states.get(profile.name)

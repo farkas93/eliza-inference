@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -43,6 +44,18 @@ class RuntimeProbe:
             if live_profile is None and live_model not in ("", "-", "unavailable"):
                 live_profile = self._infer_profile_from_model(name, live_model, profiles)
 
+            recovery = self._load_supervisor_status(name)
+            if tmux_running and not health_ok and recovery.get("profile") == live_profile:
+                phase = recovery.get("status")
+                if phase in {"backoff", "recovering"}:
+                    status = "restarting"
+                    health = "cleanup" if phase == "recovering" else f"retry #{recovery.get('restart_count', 0)}"
+                elif phase == "starting":
+                    status = "starting" if not recovery.get("restart_count") else "restarting"
+                    health = "loading"
+                elif phase in {"failed", "stopping"}:
+                    status = phase
+
             drift = self._detect_drift(service, profiles, live_profile, live_model)
 
             merged[name] = replace(
@@ -55,6 +68,15 @@ class RuntimeProbe:
             )
 
         return merged
+
+    def _load_supervisor_status(self, service_name: str) -> dict:
+        directory = pathlib.Path(os.environ.get("SERVICE_SUPERVISOR_DIR", str(self.root_dir / ".runtime")))
+        path = directory / f"{service_name}.supervisor.json"
+        try:
+            status = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return status if isinstance(status, dict) else {}
 
     def _load_runtime_profiles(self) -> Dict[str, str]:
         if not self.state_path.exists():

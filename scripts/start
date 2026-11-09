@@ -37,7 +37,25 @@ if [[ ! -x "$SERVICE_DIR/start.sh" ]]; then
   exit 1
 fi
 
-tmux new-session -d -s "$SESSION_NAME" "bash -lc 'cd \"$ROOT_DIR\" && set -a; [[ -f \"$ROOT_DIR/.env\" ]] && source \"$ROOT_DIR/.env\"; source \"$PROFILE_PATH\"; set +a; exec \"$SERVICE_DIR/start.sh\" 2>&1 | tee -a \"$LOG_FILE\"'"
+if [[ "$SERVICE" == "eliza-medium" ]]; then
+  session_args=(env)
+  # tmux's server may predate this shell and otherwise retain stale variables.
+  for variable in MODEL_HOME HF_HOME LOG_DIR BASE_VENV RUNTIME_STATE_FILE SERVICE_SUPERVISOR_DIR \
+    ELIZA_MEDIUM_PORT ELIZA_MEDIUM_AUTORESTART ELIZA_MEDIUM_RESTART_DELAY_SECONDS \
+    ELIZA_MEDIUM_RESTART_MAX_DELAY_SECONDS ELIZA_MEDIUM_RESTART_RESET_SECONDS \
+    SERVICE_SHUTDOWN_TIMEOUT_SECONDS LLAMA_SERVER_BIN LLAMA_MTP_DIR LLAMA_MTP_SERVER_BIN \
+    LLAMA_QWEN4_MTP_DIR LLAMA_QWEN4_MTP_SERVER_BIN; do
+    if [[ -v "$variable" ]]; then
+      session_args+=("$variable=${!variable}")
+    fi
+  done
+  session_args+=(bash "$ROOT_DIR/scripts/lib/run-service.sh" "$SERVICE" --profile "$PROFILE")
+  printf -v session_command '%q ' "${session_args[@]}"
+  session_command="exec $session_command"
+  tmux new-session -d -s "$SESSION_NAME" -c "$ROOT_DIR" "$session_command"
+else
+  tmux new-session -d -s "$SESSION_NAME" "bash -lc 'cd \"$ROOT_DIR\" && set -a; [[ -f \"$ROOT_DIR/.env\" ]] && source \"$ROOT_DIR/.env\"; source \"$PROFILE_PATH\"; set +a; exec \"$SERVICE_DIR/start.sh\" 2>&1 | tee -a \"$LOG_FILE\"'"
+fi
 
 sleep "${START_LIVENESS_DELAY_SECONDS:-1}"
 if ! tmux_has_session; then

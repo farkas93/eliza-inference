@@ -66,7 +66,7 @@ class CatalogConsistencyTest(unittest.TestCase):
             profile = types.SimpleNamespace(name="medium/test", backend="llamacpp")
             picker = types.SimpleNamespace(
                 profile_states={}, stack=types.SimpleNamespace(profiles={profile.name: profile}),
-                model_manager=types.SimpleNamespace(_expected_paths_for_profile=lambda _: [artifact]),
+                model_manager=types.SimpleNamespace(profile_ready=lambda _: artifact.exists()),
             )
             picker._profile_ready_now = types.MethodType(namespace["_profile_ready_now"], picker)
             label = namespace["_profile_selection_label"](picker, profile)

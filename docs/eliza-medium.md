@@ -175,13 +175,19 @@ of equivalent free unified memory while serving.
 ```
 
 Setup builds `ggml-org/llama.cpp` at pinned commit
-`f2ef14ea8b00877ed16e0145359ddb72652fa97c` from the `aman/qwen4-opt` line,
-which includes Qwen4Exp MTP PR #29761. It is isolated in
+`6023692b1e13a6d4ee6b93f989c4713e474e6165` from upstream (November 5),
+which includes Qwen4Exp MTP PR #29761 and subsequent QSA and KV-shift fixes. It is isolated in
 `~/src/llama.cpp-qwen4-mtp`; set `LLAMA_QWEN4_MTP_DIR` or
 `LLAMA_QWEN4_MTP_SERVER_BIN` to override. This runtime uses the current
 standalone draft artifact `MTP/mtp-Qwen3.8-Flash-Next-Q8_0.gguf`, not the older
 shared-head artifact used by the legacy `unsloth-mtp` profiles. Do not mix the
 runtime and draft-file contracts.
+
+The main and draft downloads are pinned to Hub revision
+`084c631ac221016019d6e0a863afe92d90edd3b0` (Dynamic v3.1). The launcher checks
+the actual binary's revision as well as MTP support and every main GGUF shard.
+An interrupted download is `INCOMPLETE` in the catalog and not ready in the
+profile picker, even if the small metadata shard and draft file already exist.
 
 The sibling `medium/qwen3.8-flash-next-ud-iq3-xxs-llamacpp-mtp-256k` profile
 keeps the same runtime and draft but uses the lower-memory IQ3_XXS v3.1 main
@@ -196,12 +202,54 @@ measurement of our exact v3.1 GGUF revision or workload. Start with draft depth
 3; confirm `draft acceptance` in logs, then compare depths 2, 3 and 4 against
 MTP-off using identical prompts and sampling. Measure peak memory, prefill,
 decode, TTFT, long-prompt behavior and multi-turn tool calls before treating
-this as qualified production behavior. The MTP head uses a dense attention
-path, so long-context decode may have different economics from short prompts.
+this as qualified production behavior. This MTP implementation uses QSA; measure
+long-context behavior separately rather than extrapolating short-prompt speed.
 
 The older 32k/128k/256k profiles ending in `llamacpp-mtp-*` use an isolated
 September Unsloth shared-head runtime and are retained for compatibility and
 comparison. The new default does not use that shared-head contract.
+
+## Automatic crash recovery
+
+`./scripts/start` and `./scripts/restart` launch eliza-medium under a supervisor
+inside the service's tmux session. Recovery continues when the TUI closes.
+If the model aborts, segfaults, is killed, or exits unexpectedly (including an
+unexpected exit code 0), the supervisor reaps it, terminates remaining worker
+processes, then starts the same profile and waits for its health endpoint.
+
+Retries use exponential backoff: 2, 4, 8, 16, 32, then at most 60 seconds.
+Five minutes of healthy uptime resets the delay. During recovery the Services
+tab shows `restarting`, with `retry #N` or `loading` as health information.
+`./scripts/status eliza-medium` reports restart count, last exit code and the
+scheduled retry timestamp; `./scripts/status-stack` also shows recovery.
+Detailed crash/retry messages are appended to `logs/eliza-medium.log`, and the
+current supervisor snapshot is `.runtime/eliza-medium.supervisor.json`.
+
+Deliberate `stop` and profile switches stop the supervisor first, wait for model
+workers to exit, then close tmux. A stop during backoff cancels the pending retry.
+Only one supervisor can own a service at a time. Setup/artifact errors (exit
+codes 2, 64 or 78) stop recovery and report `failed`: fix the configuration and
+restart instead of repeatedly loading an invalid model. Health checks mark a
+reload ready; a temporarily slow HTTP response does not kill a running model.
+
+Optional settings in `.env` (also shown in `.env.example`):
+
+```bash
+ELIZA_MEDIUM_AUTORESTART="true"
+ELIZA_MEDIUM_RESTART_DELAY_SECONDS="2"
+ELIZA_MEDIUM_RESTART_MAX_DELAY_SECONDS="60"
+ELIZA_MEDIUM_RESTART_RESET_SECONDS="300"
+SERVICE_SHUTDOWN_TIMEOUT_SECONDS="10"
+SERVICE_STOP_TIMEOUT_SECONDS="30"
+```
+
+Restart the service once after updating to attach the supervisor to an existing
+deployment. `ELIZA_MEDIUM_AUTORESTART=false` runs the medium process directly.
+Recovery reloads the model rather than resuming an interrupted generation;
+clients must retry requests that failed during the crash. The supplied systemd
+unit starts/stops the tmux-managed service, while the supervisor owns model
+restart policy. A whole-host restart still requires the service to be started
+at boot through the normal stack/systemd setup.
 
 ## ds4dfm (Rust-host DwarfStar) backend
 

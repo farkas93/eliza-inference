@@ -8,7 +8,24 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
 parse_service_profile "$@"
 
+# restart passes the NEW profile to stop; backend cleanup must use the OLD one.
+live_profile="$(runtime_state get --state "$RUNTIME_STATE_FILE" --service "$SERVICE" 2>/dev/null || true)"
+if [[ -n "$live_profile" ]]; then
+  live_profile_path="$(resolve_profile_path "$live_profile" || true)"
+  if [[ -n "$live_profile_path" ]]; then
+    PROFILE="$live_profile"
+    PROFILE_PATH="$live_profile_path"
+  fi
+fi
+
 require_command tmux
+
+if [[ "$SERVICE" == "eliza-medium" ]]; then
+  supervisor_python="$(service_control_python)"
+  "$supervisor_python" "$ROOT_DIR/scripts/lib/service_supervisor.py" stop \
+    --state "$SERVICE_SUPERVISOR_DIR/$SERVICE.supervisor.json" \
+    --timeout "${SERVICE_STOP_TIMEOUT_SECONDS:-30}"
+fi
 
 if tmux_has_session; then
   tmux kill-session -t "$SESSION_NAME"
