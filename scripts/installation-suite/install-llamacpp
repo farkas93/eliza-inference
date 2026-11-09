@@ -12,8 +12,10 @@ BUILD_DIR="${LLAMA_CPP_BUILD_DIR:-$LLAMA_CPP_DIR/build}"
 CLEAN_BUILD="false"
 UPDATE_SOURCE="true"
 QWEN_MTP="false"
+QWEN4_MTP="false"
 # Legacy Unsloth shared heads require the pre-upstream MTP implementation.
 MTP_REVISION="6fcaa16f4b360649933a54d1f91ad40ed35c0e11"
+QWEN4_MTP_REVISION="f2ef14ea8b00877ed16e0145359ddb72652fa97c"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -21,6 +23,13 @@ while [[ $# -gt 0 ]]; do
       QWEN_MTP="true"
       LLAMA_CPP_DIR="${LLAMA_MTP_DIR:-$HOME/src/llama.cpp-qwen-mtp}"
       LLAMA_CPP_REPO="https://github.com/danielhanchen/llama.cpp"
+      BUILD_DIR="$LLAMA_CPP_DIR/build"
+      shift
+      ;;
+    --qwen4-mtp)
+      QWEN4_MTP="true"
+      LLAMA_CPP_DIR="${LLAMA_QWEN4_MTP_DIR:-$HOME/src/llama.cpp-qwen4-mtp}"
+      LLAMA_CPP_REPO="https://github.com/ggml-org/llama.cpp"
       BUILD_DIR="$LLAMA_CPP_DIR/build"
       shift
       ;;
@@ -39,12 +48,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<USAGE
-Usage: ./scripts/setup llamacpp [--qwen-mtp] [--clean] [--no-update] [--dir <path>]
+Usage: ./scripts/setup llamacpp [--qwen-mtp|--qwen4-mtp] [--clean] [--no-update] [--dir <path>]
 
 Builds llama.cpp with CUDA and curl support.
 
 Options:
   --qwen-mtp Build the pinned Qwen3.8 Unsloth shared-MTP runtime in a separate checkout.
+  --qwen4-mtp Build the pinned Qwen4Exp MTP runtime with standalone draft heads.
   --clean      Remove the build directory before configuring.
   --no-update  Do not git pull an existing clean llama.cpp checkout.
   --dir PATH   Source checkout path. Default: ~/src/llama.cpp
@@ -171,8 +181,12 @@ ensure_source_checkout() {
 
 configure_and_build() {
   local generator_args=()
+  local cuda_arch_args=()
   if command -v ninja >/dev/null 2>&1; then
     generator_args=(-G Ninja)
+  fi
+  if [[ "$QWEN4_MTP" == "true" ]]; then
+    cuda_arch_args=("-DCMAKE_CUDA_ARCHITECTURES=${LLAMA_CUDA_ARCHITECTURES:-121}")
   fi
 
   if [[ "$CLEAN_BUILD" == "true" ]]; then
@@ -187,6 +201,7 @@ configure_and_build() {
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DGGML_CUDA=ON \
+    "${cuda_arch_args[@]}" \
     -DLLAMA_CURL=ON
 
   echo "Building llama.cpp targets"
@@ -197,15 +212,16 @@ configure_and_build() {
 }
 
 pin_mtp_source() {
+  local revision="$1"
   local actual
   actual="$(git -C "$LLAMA_CPP_DIR" rev-parse HEAD)"
-  if [[ "$actual" != "$MTP_REVISION" ]]; then
+  if [[ "$actual" != "$revision" ]]; then
     if [[ -n "$(git -C "$LLAMA_CPP_DIR" status --porcelain)" ]]; then
       echo "MTP checkout has local changes; cannot select pinned revision" >&2
       exit 1
     fi
-    git -C "$LLAMA_CPP_DIR" fetch "$LLAMA_CPP_REPO" "$MTP_REVISION"
-    git -C "$LLAMA_CPP_DIR" checkout --detach "$MTP_REVISION"
+    git -C "$LLAMA_CPP_DIR" fetch "$LLAMA_CPP_REPO" "$revision"
+    git -C "$LLAMA_CPP_DIR" checkout --detach "$revision"
   fi
 }
 
@@ -224,7 +240,7 @@ verify_binaries() {
 }
 
 existing="$(existing_llama_server || true)"
-if [[ "$QWEN_MTP" == "true" ]]; then
+if [[ "$QWEN_MTP" == "true" || "$QWEN4_MTP" == "true" ]]; then
   existing=""
   UPDATE_SOURCE="false"
 fi
@@ -240,17 +256,23 @@ install_prereqs
 check_cuda_visibility
 ensure_source_checkout
 if [[ "$QWEN_MTP" == "true" ]]; then
-  pin_mtp_source
+  pin_mtp_source "$MTP_REVISION"
+elif [[ "$QWEN4_MTP" == "true" ]]; then
+  pin_mtp_source "$QWEN4_MTP_REVISION"
 fi
 configure_and_build
 verify_binaries
-if [[ "$QWEN_MTP" == "true" ]]; then
+if [[ "$QWEN_MTP" == "true" || "$QWEN4_MTP" == "true" ]]; then
   help_output="$("$BUILD_DIR/bin/llama-server" --help 2>&1)"
   if [[ "$help_output" != *draft-mtp* ]]; then
     echo "Built binary does not advertise draft-mtp support" >&2
     exit 1
   fi
-  echo "Pinned Unsloth-compatible Qwen MTP runtime ready: $MTP_REVISION"
+  if [[ "$QWEN4_MTP" == "true" ]]; then
+    echo "Pinned upstream Qwen4Exp MTP runtime ready: $QWEN4_MTP_REVISION"
+  else
+    echo "Pinned Unsloth-compatible Qwen MTP runtime ready: $MTP_REVISION"
+  fi
   exit 0
 fi
 
