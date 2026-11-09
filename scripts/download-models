@@ -40,13 +40,24 @@ hf_download() {
 case "$SERVICE" in
   eliza-medium)
     if [[ "${BACKEND:-vllm}" == "llamacpp" ]]; then
+      revision_args=()
+      if [[ -n "${MODEL_REVISION:-}" ]]; then
+        revision_args=(--revision "$MODEL_REVISION")
+      fi
       mkdir -p "$MODEL_DIR"
       echo "Downloading llama.cpp GGUF files from $MODEL_REPO into $MODEL_DIR"
       hf_download "$MODEL_REPO" \
+        "${revision_args[@]}" \
         --include "${HF_INCLUDE_MODEL:-$MODEL_FILE}" \
         --local-dir "$MODEL_DIR"
       if [[ -n "${DRAFT_MODEL_FILE:-}" ]]; then
+        draft_revision="${DRAFT_MODEL_REVISION:-${MODEL_REVISION:-}}"
+        revision_args=()
+        if [[ -n "$draft_revision" ]]; then
+          revision_args=(--revision "$draft_revision")
+        fi
         hf_download "${DRAFT_MODEL_REPO:-$MODEL_REPO}" \
+          "${revision_args[@]}" \
           --include "$DRAFT_MODEL_FILE" \
           --local-dir "$MODEL_DIR"
       fi

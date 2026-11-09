@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import fnmatch
 import os
 import pathlib
 import re
@@ -9,9 +10,11 @@ import time
 from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List
 from urllib.error import URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .models import Profile, Service
+from .model_artifacts import gguf_shards, missing_paths, required_paths
 
 # TTL for cached HF API size estimates (seconds)
 _SIZE_CACHE_TTL = 60.0
@@ -20,7 +23,6 @@ _ENV_CACHE_TTL = 30.0
 _ENV_VAR_PATTERN = re.compile(
     r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))"
 )
-_SHARD_FILE_RE = re.compile(r"-(\d+)-of-(\d+)\.gguf$")
 
 
 @dataclass(frozen=True)
@@ -211,6 +213,13 @@ class ModelManager:
                 seen.add(path)
         return deduped
 
+    def required_paths_for_profile(self, profile: Profile) -> tuple[pathlib.Path, ...]:
+        return required_paths(self._expected_paths_for_profile(profile))
+
+    def profile_ready(self, profile: Profile) -> bool:
+        paths = self.required_paths_for_profile(profile)
+        return bool(paths) and not missing_paths(paths)
+
     def _compute_size(self, path: pathlib.Path) -> int:
         if not path.exists():
             return 0
@@ -228,25 +237,16 @@ class ModelManager:
         return total
 
     def _display_size(self, path: pathlib.Path) -> int:
-        if not path.exists():
-            return 0
-        if not path.is_file():
+        if path.is_dir():
             return self._compute_size(path)
-        match = _SHARD_FILE_RE.search(path.name)
-        if not match:
-            return self._compute_size(path)
-        width = len(match.group(1))
-        count = int(match.group(2))
-        prefix = path.name[: match.start()]
         total = 0
-        for index in range(1, count + 1):
-            shard = path.with_name(f"{prefix}-{index:0{width}d}-of-{count:0{width}d}.gguf")
+        for shard in gguf_shards(path):
             if shard.is_file():
                 try:
                     total += shard.stat().st_size
                 except OSError:
                     continue
-        return total or self._compute_size(path)
+        return total
 
     def _estimate_download_size(self, profile: Profile) -> int | None:
         """Query HF API to estimate download size for a profile. Results cached for _SIZE_CACHE_TTL seconds."""
@@ -288,7 +288,8 @@ class ModelManager:
             return None
 
         try:
-            url = f"https://huggingface.co/api/models/{repo}/tree/main?recursive=True"
+            revision = profile_env.get("MODEL_REVISION", "main")
+            url = f"https://huggingface.co/api/models/{repo}/tree/{quote(revision, safe='')}?recursive=True"
             req = Request(url, method="GET")
             with urlopen(req, timeout=3) as resp:
                 data = json.load(resp)
@@ -309,7 +310,7 @@ class ModelManager:
             if not isinstance(size, (int, float)):
                 continue
             if include_patterns:
-                if any(pattern in path for pattern in include_patterns):
+                if any(fnmatch.fnmatchcase(path, pattern) for pattern in include_patterns):
                     total += int(size)
             else:
                 total += int(size)
@@ -331,8 +332,8 @@ class ModelManager:
 
         states: Dict[str, ProfileState] = {}
         for profile in profiles.values():
-            expected_paths = self._expected_paths_for_profile(profile)
-            ready = all(path.exists() for path in expected_paths) if expected_paths else False
+            expected_paths = self.required_paths_for_profile(profile)
+            ready = bool(expected_paths) and not missing_paths(expected_paths)
             if expected_paths:
                 first_path = expected_paths[0]
                 model_location = str(first_path if first_path.is_dir() else first_path.parent)
@@ -356,28 +357,30 @@ class ModelManager:
         profile_paths: Dict[pathlib.Path, set[str]] = {}
         for profile in profiles.values():
             for expected_path in self._expected_paths_for_profile(profile):
-                profile_paths.setdefault(expected_path.resolve(), set()).add(profile.name)
+                profile_paths.setdefault(gguf_shards(expected_path)[0].resolve(), set()).add(profile.name)
 
         model_entries: Dict[pathlib.Path, ModelEntry] = {}
         for path, linked_profiles in profile_paths.items():
             size_bytes = self._display_size(path)
+            present = any(shard.exists() for shard in gguf_shards(path))
             entry = ModelEntry(
                 name=path.name or str(path),
                 path=str(path),
                 size_bytes=size_bytes,
                 linked_profiles=tuple(sorted(linked_profiles)),
-                status="linked" if path.exists() else "missing",
+                status=("linked" if not missing_paths((path,)) else "incomplete") if present else "missing",
             )
             model_entries[path] = entry
 
         if self.model_home.exists():
+            covered_paths = set(required_paths(model_entries))
             for child in sorted(self.model_home.iterdir()):
                 child = child.resolve()
-                if child in model_entries:
+                if child in covered_paths:
                     continue
 
                 linked = False
-                for known_path in model_entries:
+                for known_path in covered_paths:
                     if known_path == child:
                         linked = True
                         break
@@ -418,6 +421,7 @@ class ModelManager:
         profile_states: Dict[str, ProfileState],
     ) -> tuple[int, int]:
         target_path = pathlib.Path(entry.path)
+        target_shards = set(gguf_shards(target_path))
         deleted_files = 0
         deleted_bytes = 0
 
@@ -429,10 +433,11 @@ class ModelManager:
                 expected_path = pathlib.Path(expected_path_text)
                 if not expected_path.exists() or expected_path.is_dir():
                     continue
-                try:
-                    expected_path.relative_to(target_path)
-                except ValueError:
-                    continue
+                if expected_path not in target_shards:
+                    try:
+                        expected_path.relative_to(target_path)
+                    except ValueError:
+                        continue
 
                 try:
                     file_size = expected_path.stat().st_size

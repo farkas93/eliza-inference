@@ -2,10 +2,20 @@
 
 Larger local reasoning/coding endpoint. Stable runtime paths are llama.cpp and SGLang; vLLM profiles remain experimental on GB10.
 
-Default profile: `medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k`.
+Default profile: `medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k`
+(Unsloth Dynamic v3.1 UD-IQ4_XS with Qwen4Exp MTP). The previous UD-Q4_K_XL
+profile remains available as a rollback option.
+
+The medium process is supervised in tmux and automatically reloads the same
+profile after a crash with capped exponential backoff. Use
+`./scripts/status eliza-medium` and `./scripts/logs eliza-medium` to inspect
+recovery. Intentional stops and profile switches cancel recovery and wait for
+workers to shut down. See `docs/eliza-medium.md` for controls.
 
 ```bash
-./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k
+./scripts/setup llamacpp --qwen4-mtp
+./scripts/download-models eliza-medium --profile medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k
+./scripts/start eliza-medium --profile medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k
 ./scripts/smoke-test eliza-medium
 
 ./scripts/setup llamacpp

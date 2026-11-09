@@ -14,6 +14,7 @@ load_env() {
   LLAMA_CACHE="${LLAMA_CACHE:-$MODEL_HOME/llama}"
   LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
   RUNTIME_STATE_FILE="${RUNTIME_STATE_FILE:-$ROOT_DIR/.runtime/service_profiles.json}"
+  SERVICE_SUPERVISOR_DIR="${SERVICE_SUPERVISOR_DIR:-$ROOT_DIR/.runtime}"
   ELIZA_VENV_DIR="${ELIZA_VENV_DIR:-$ROOT_DIR/.venvs}"
   BASE_VENV="${BASE_VENV:-$ELIZA_VENV_DIR/base}"
   STT_VENV="${STT_VENV:-$ELIZA_VENV_DIR/stt}"
@@ -29,12 +30,25 @@ load_env() {
   VOCODE_BRIDGE_PORT="${VOCODE_BRIDGE_PORT:-8021}"
   VLLM_BIN="${VLLM_BIN:-$VLLM_VENV/bin/vllm}"
   LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
+  LLAMA_MTP_DIR="${LLAMA_MTP_DIR:-$HOME/src/llama.cpp-qwen-mtp}"
+  LLAMA_MTP_SERVER_BIN="${LLAMA_MTP_SERVER_BIN:-$LLAMA_MTP_DIR/build/bin/llama-server}"
+  LLAMA_QWEN4_MTP_DIR="${LLAMA_QWEN4_MTP_DIR:-$HOME/src/llama.cpp-qwen4-mtp}"
+  LLAMA_QWEN4_MTP_SERVER_BIN="${LLAMA_QWEN4_MTP_SERVER_BIN:-$LLAMA_QWEN4_MTP_DIR/build/bin/llama-server}"
   PIPER_BIN="${PIPER_BIN:-$TTS_VENV/bin/piper}"
   if [[ "$PIPER_BIN" == "piper" && -x "$TTS_VENV/bin/piper" ]]; then
     PIPER_BIN="$TTS_VENV/bin/piper"
   fi
 
-  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR RUNTIME_STATE_FILE ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV SGLANG_VENV VOCODE_VENV DEFAULT_HOST ELIZA_MEDIUM_PORT ELIZA_SMALL_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN PIPER_BIN
+  export MODEL_HOME HF_HOME LLAMA_CACHE LOG_DIR RUNTIME_STATE_FILE ELIZA_VENV_DIR BASE_VENV STT_VENV TTS_VENV VLLM_VENV SGLANG_VENV VOCODE_VENV DEFAULT_HOST ELIZA_MEDIUM_PORT ELIZA_SMALL_PORT STT_PORT TTS_PORT VOCODE_BRIDGE_PORT VLLM_BIN LLAMA_SERVER_BIN LLAMA_MTP_DIR LLAMA_MTP_SERVER_BIN LLAMA_QWEN4_MTP_DIR LLAMA_QWEN4_MTP_SERVER_BIN PIPER_BIN
+  export SERVICE_SUPERVISOR_DIR
+}
+
+service_control_python() {
+  if [[ -x "$BASE_VENV/bin/python" ]]; then
+    printf '%s\n' "$BASE_VENV/bin/python"
+  else
+    command -v python3
+  fi
 }
 
 venv_python() {
@@ -152,7 +166,7 @@ parse_service_profile() {
       PROFILE="$live_profile"
     else
       case "$SERVICE" in
-        eliza-medium) PROFILE="medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k" ;;
+        eliza-medium) PROFILE="medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k" ;;
         eliza-small) PROFILE="small/gemma4-e4b-q4-llamacpp-128k" ;;
         stt) PROFILE="stt/faster-whisper-small-cpu" ;;
         tts) PROFILE="tts/piper-lessac" ;;

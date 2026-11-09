@@ -12,7 +12,7 @@ WITH_SGLANG="true"
 DOWNLOAD_MODELS="true"
 RUN_SMOKE_TESTS="true"
 SMALL_PROFILE="small/gemma4-e4b-q4-llamacpp-128k"
-MEDIUM_PROFILE="medium/qwen3.8-flash-next-ud-q4-k-xl-llamacpp-256k"
+MEDIUM_PROFILE="medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k"
 STT_PROFILE="stt/faster-whisper-small-cpu"
 TTS_PROFILE="tts/piper-lessac"
 
@@ -123,8 +123,26 @@ profile_backend() {
   )
 }
 
+profile_runtime() {
+  local profile="$1"
+  local profile_path
+  profile_path="$(resolve_profile_path "$profile" || true)"
+  if [[ -z "$profile_path" ]]; then
+    echo "Profile not found: $profile" >&2
+    return 1
+  fi
+  (
+    set -a
+    # shellcheck disable=SC1090
+    source "$profile_path"
+    set +a
+    printf '%s\n' "${LLAMA_RUNTIME:-}"
+  )
+}
+
 SMALL_BACKEND="$(profile_backend "$SMALL_PROFILE")"
 MEDIUM_BACKEND="$(profile_backend "$MEDIUM_PROFILE")"
+MEDIUM_RUNTIME="$(profile_runtime "$MEDIUM_PROFILE")"
 
 if [[ "$WITH_SGLANG" != "true" && ( "$SMALL_BACKEND" == "sglang" || "$MEDIUM_BACKEND" == "sglang" ) ]]; then
   echo "--no-sglang conflicts with selected SGLang profile" >&2
@@ -137,6 +155,11 @@ echo "[1/10] Installing prerequisites"
 echo "[2/10] Installing required model backends"
 if [[ "$SMALL_BACKEND" == "llamacpp" || "$MEDIUM_BACKEND" == "llamacpp" ]]; then
   "$SUITE_DIR/install-llamacpp"
+fi
+if [[ "$MEDIUM_BACKEND" == "llamacpp" && "$MEDIUM_RUNTIME" == "qwen4-mtp" ]]; then
+  "$SUITE_DIR/install-llamacpp" --qwen4-mtp
+elif [[ "$MEDIUM_BACKEND" == "llamacpp" && "$MEDIUM_RUNTIME" == "unsloth-mtp" ]]; then
+  "$SUITE_DIR/install-llamacpp" --qwen-mtp
 fi
 
 if [[ "$WITH_SGLANG" == "true" || "$SMALL_BACKEND" == "sglang" || "$MEDIUM_BACKEND" == "sglang" ]]; then

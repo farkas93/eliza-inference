@@ -483,8 +483,12 @@ class Executor:
             backend = self._profile_backend(profile_id)
             if backend in {"llamacpp", "vllm", "sglang", "ds4", "flash", "ds4dfm"}:
                 command = ["./scripts/setup", backend]
-                if backend == "llamacpp" and self._profile_value(profile_id, "LLAMA_RUNTIME") == "unsloth-mtp":
-                    command.append("--qwen-mtp")
+                if backend == "llamacpp":
+                    runtime = self._profile_value(profile_id, "LLAMA_RUNTIME")
+                    if runtime == "unsloth-mtp":
+                        command.append("--qwen-mtp")
+                    elif runtime == "qwen4-mtp":
+                        command.append("--qwen4-mtp")
                 commands.append(command)
         elif service_name == "stt":
             commands.append(["./scripts/setup", "stt", "--profile", profile_id])

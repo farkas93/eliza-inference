@@ -27,6 +27,7 @@ class ServiceLifecycleTest(unittest.TestCase):
                 #!/usr/bin/env bash
                 set -euo pipefail
                 command_name="${1:-}"
+                printf '%s\n' "$@" >> "$FAKE_TMUX_ARGS"
                 shift || true
                 session=""
                 while [[ $# -gt 0 ]]; do
@@ -61,6 +62,7 @@ class ServiceLifecycleTest(unittest.TestCase):
                 "PATH": f"{self.bin_dir}:{self.env['PATH']}",
                 "BASE_VENV": str(ROOT_DIR / ".venv"),
                 "FAKE_TMUX_DIR": str(self.temp_path),
+                "FAKE_TMUX_ARGS": str(self.temp_path / "tmux-args"),
                 "LOG_DIR": str(self.temp_path / "logs"),
                 "RUNTIME_STATE_FILE": str(self.state_path),
                 "START_LIVENESS_DELAY_SECONDS": "0",
@@ -123,6 +125,39 @@ class ServiceLifecycleTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("exited during startup", result.stderr)
         self.assertNotIn("eliza-small", self.load_state())
+
+    def test_medium_launch_uses_supervisor_and_forwards_current_environment(self) -> None:
+        profile = "medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k"
+        self.env["ELIZA_MEDIUM_RESTART_DELAY_SECONDS"] = "7"
+        self.env["SERVICE_SUPERVISOR_DIR"] = str(self.temp_path / "runtime")
+        result = subprocess.run([str(START), "eliza-medium", "--profile", profile],
+                                cwd=ROOT_DIR, env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = (self.temp_path / "tmux-args").read_text()
+        self.assertIn("scripts/lib/run-service.sh", args)
+        self.assertIn("ELIZA_MEDIUM_RESTART_DELAY_SECONDS=7", args)
+        self.assertEqual(self.load_state()["eliza-medium"], profile)
+
+    def test_switching_from_flash_stops_the_live_backend_not_the_new_one(self) -> None:
+        docker = self.bin_dir / "docker"
+        docker.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$FAKE_DOCKER_ARGS"\n'
+                          'if [[ "$1" == "inspect" ]]; then printf "running\\n"; fi\n')
+        docker.chmod(0o755)
+        self.env["FAKE_DOCKER_ARGS"] = str(self.temp_path / "docker-args")
+        self.env["FLASH_CONTAINER"] = "old-flash-container"
+        self.env["SERVICE_SUPERVISOR_DIR"] = str(self.temp_path / "runtime")
+        old = "medium/qwen3.8-flash-next-flash-docker-500k"
+        new = "medium/qwen3.8-flash-next-ud-iq4-xs-llamacpp-mtp-256k"
+        first = subprocess.run([str(START), "eliza-medium", "--profile", old],
+                               cwd=ROOT_DIR, env=self.env, capture_output=True, text=True)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        changed = subprocess.run([str(RESTART), "eliza-medium", "--profile", new],
+                                 cwd=ROOT_DIR, env=self.env, capture_output=True, text=True)
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        # The live profile explicitly selects this container; the new native
+        # profile has no Docker cleanup hook at all.
+        self.assertIn("stop qwen38-flash", (self.temp_path / "docker-args").read_text())
+        self.assertEqual(self.load_state()["eliza-medium"], new)
 
 
 if __name__ == "__main__":

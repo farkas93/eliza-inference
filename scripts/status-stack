@@ -46,7 +46,7 @@ live_model_from_url() {
   local models_url="$1"
   local body model_id
 
-  body="$(curl -fsS "$models_url" 2>/dev/null || true)"
+  body="$(curl -fsS --max-time 2 "$models_url" 2>/dev/null || true)"
   if [[ -z "$body" ]]; then
     return 1
   fi
@@ -120,7 +120,7 @@ while IFS=$'\t' read -r service profile health_url; do
   fi
 
   health="-"
-  if [[ -n "$health_url" ]] && curl -fsS "$health_url" >/dev/null 2>&1; then
+  if [[ -n "$health_url" ]] && curl -fsS --max-time 2 "$health_url" >/dev/null 2>&1; then
     health="ok"
   fi
 
@@ -128,6 +128,15 @@ while IFS=$'\t' read -r service profile health_url; do
     status="running"
   else
     status="stopped"
+  fi
+
+  if [[ "$service" == "eliza-medium" && "$tmux_running" == "true" && "$health" != "ok" ]]; then
+    supervisor_python="$(service_control_python)"
+    supervisor_phase="$("$supervisor_python" "$ROOT_DIR/scripts/lib/service_supervisor.py" status --state "$SERVICE_SUPERVISOR_DIR/$service.supervisor.json" --field status)"
+    case "$supervisor_phase" in
+      backoff | recovering) status="restarting" ;;
+      starting | stopping | failed) status="$supervisor_phase" ;;
+    esac
   fi
 
   live_model="-"
@@ -172,5 +181,6 @@ fi
 echo
 echo "Legend:"
 echo "  LIVE_PROFILE: profile recorded at start/restart time (from .runtime state)."
+echo "  restarting: medium supervisor is recovering a crashed model; see scripts/status eliza-medium."
 echo "  DRIFT=yes when LIVE_PROFILE differs from CONFIG_PROFILE;"
 echo "             otherwise for model services when LIVE_MODEL differs from configured MODEL_FILE."
