@@ -19,4 +19,5 @@ testpaths = ["tests"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "fastapi>=0.110.0",
 ]

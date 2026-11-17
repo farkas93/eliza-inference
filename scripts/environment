@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/common.sh"
+set -a
+load_env
+set +a
+exec "$(service_control_python)" "$ROOT_DIR/scripts/lib/environment.py" "$@"

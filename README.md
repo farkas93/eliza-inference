@@ -46,6 +46,11 @@ When overriding, keep in mind that profile readiness checks, downloads, and cach
 
 The default stack is defined in `configs/eliza-stack.toml`.
 
+On-demand GPU training uses the same thin control daemon to switch between
+mutually exclusive inference and Slurm environments. Slurm runs only in training
+mode; training dependencies remain separate. See
+[the training environment runbook](docs/training-environment.md).
+
 Start speech services independently:
 
 ```bash

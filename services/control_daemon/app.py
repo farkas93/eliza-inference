@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import secrets
@@ -133,7 +134,7 @@ def start_stack() -> dict[str, Any]:
         timeout_seconds=CONTROL_START_TIMEOUT_SECONDS,
     )
     if not res["success"]:
-        raise HTTPException(status_code=500, detail=f"Failed to start stack: {res['stderr']}")
+        raise HTTPException(status_code=409 if res["returncode"] == 3 else 500, detail=f"Failed to start stack: {res['stderr']}")
     return {"status": "started", "output": res["stdout"]}
 
 
@@ -160,7 +161,7 @@ def start_service(service_name: str) -> dict[str, Any]:
         timeout_seconds=CONTROL_START_TIMEOUT_SECONDS,
     )
     if not res["success"]:
-        raise HTTPException(status_code=500, detail=f"Failed to start service {service_name}: {res['stderr']}")
+        raise HTTPException(status_code=409 if res["returncode"] == 3 else 500, detail=f"Failed to start service {service_name}: {res['stderr']}")
     return {"status": "started", "service": service_name, "output": res["stdout"]}
 
 
@@ -176,3 +177,37 @@ def stop_service(service_name: str) -> dict[str, Any]:
     if not res["success"]:
         raise HTTPException(status_code=500, detail=f"Failed to stop service {service_name}: {res['stderr']}")
     return {"status": "stopped", "service": service_name, "output": res["stdout"]}
+
+
+@app.get("/environment", dependencies=[Depends(_require_control_token)])
+def environment_status() -> dict[str, Any]:
+    res = _run_script("environment", "status")
+    if not res["success"]:
+        raise HTTPException(status_code=500, detail=res["stderr"])
+    return json.loads(res["stdout"])
+
+
+@app.post("/environment/{mode}", dependencies=[Depends(_require_control_token)])
+def switch_environment(mode: str) -> dict[str, Any]:
+    if mode not in {"inference", "training"}:
+        raise HTTPException(status_code=422, detail="mode must be inference or training")
+    res = _run_lifecycle_operation(
+        f"environment/{mode}", "environment", mode,
+        timeout_seconds=CONTROL_START_TIMEOUT_SECONDS,
+    )
+    if not res["success"]:
+        raise HTTPException(status_code=409 if res["returncode"] == 3 else 500, detail=res["stderr"])
+    return json.loads(res["stdout"])
+
+
+@app.post("/training/token", dependencies=[Depends(_require_control_token)])
+def training_token() -> dict[str, Any]:
+    # Unlike legacy trusted-LAN lifecycle routes, credential delegation requires auth.
+    if not os.environ.get("CONTROL_DAEMON_TOKEN"):
+        raise HTTPException(status_code=503, detail="Configure CONTROL_DAEMON_TOKEN before delegating training credentials")
+    res = _run_lifecycle_operation(
+        "training/token", "environment", "token", timeout_seconds=CONTROL_STATUS_TIMEOUT_SECONDS,
+    )
+    if not res["success"]:
+        raise HTTPException(status_code=409 if res["returncode"] == 3 else 500, detail=res["stderr"])
+    return json.loads(res["stdout"])

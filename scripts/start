@@ -6,6 +6,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/common.sh"
 load_env
+# Hold the host lock through startup, including CLI and systemd entrypoints.
+# Environment restoration inherits this descriptor from the switch controller.
+if ! "$(service_control_python)" "$ROOT_DIR/scripts/lib/environment.py" lock-held; then
+  exec "$(service_control_python)" "$ROOT_DIR/scripts/lib/environment.py" guard-start -- "$ROOT_DIR/scripts/start" "$@"
+fi
 parse_service_profile "$@"
 
 require_command tmux

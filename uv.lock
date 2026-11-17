@@ -85,6 +85,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "pytest" },
 ]
 
@@ -97,7 +98,28 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "fastapi", specifier = ">=0.110.0" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.163.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "anyio" },
+    { name = "opentelemetry-api" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bf/2f/d173f9bf5aba1285067ff47fd06b7e35bb922e3a1e52588fb7b31319d4ad/fastapi-0.163.2.tar.gz", hash = "sha256:e605c4c9b94be78b43aa8239a62ccf7b6684346cdc9e053633feab0ab21b87c7", size = 547696, upload-time = "2026-11-17T18:29:03.57Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/ef/bf79bc47e914dfabc56657bb6a2d33340b1faa5a514b0b92e842aa088d1e/fastapi-0.163.2-py3-none-any.whl", hash = "sha256:825a8fdd18d7bfcb1b86735e9805c59b7400d55c4060d3df5331b62ae452f004", size = 154717, upload-time = "2026-11-17T18:29:02.025Z" },
+]
 
 [[package]]
 name = "filelock"
@@ -353,6 +375,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/40/36/4c926a91554483977608951360c18c2e911592785eb87a6437813f6123f7/openai-2.41.1.tar.gz", hash = "sha256:23d617a0432457ad844973bee8f540be9da90894f7c5686852d2d365da058f57", size = 783584, upload-time = "2026-06-10T16:10:37.667Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/74/925d7b3892927e9804aaf58d374a45dc28e4420ff90e992272b77286343e/openai-2.41.1-py3-none-any.whl", hash = "sha256:a939565f350cb7443cb843b801b88c716ac8024b492fb94ca269d5f6b1bbefd6", size = 1353380, upload-time = "2026-06-10T16:10:35.756Z" },
+]
+
+[[package]]
+name = "opentelemetry-api"
+version = "1.45.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/14/cf3a6b6448849656e1e5f4e2101f3988dc6789724050096aba1bc5ccf592/opentelemetry_api-1.45.2.tar.gz", hash = "sha256:d7b0008e21e5fd61cbe7a7f34ca3b6905a78ab677d9bc395e299359c75cda6b4", size = 73277, upload-time = "2026-10-29T17:29:37.888Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/2d/610db864d7513158cebb8f36cc88e67e73bd6c7aa1905ef18d89e1281c81/opentelemetry_api-1.45.2-py3-none-any.whl", hash = "sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34", size = 60335, upload-time = "2026-10-29T17:29:06.955Z" },
 ]
 
 [[package]]
@@ -627,6 +661,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "starlette"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
 ]
 
 [[package]]
