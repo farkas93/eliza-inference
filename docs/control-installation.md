@@ -1,178 +1,110 @@
-# Install host control and on-demand training
+# Install host control and advertise Slurm
 
-Run on the **DGX host**, from the updated `eliza-inference` checkout, as your
-normal inference/control user. The installer requests sudo for its host stage.
-
-```bash
-./scripts/setup control --plan     # inspect the steps; no installation or prompts
-./scripts/setup control            # install control + Slurm + isolated TRL runtime
-./scripts/setup control --check    # verify the installed host while in inference mode
-```
-
-The original entrypoint is equivalent:
+Run on the DGX as your normal control/inference user:
 
 ```bash
-./scripts/installation-suite/install-control-daemon
-```
-
-**You do not need to install or configure Slurm manually first.** The installer
-prepares it and keeps it stopped. Installing the daemon does not switch the
-GPU away from inference. Stop/drain an already active scheduler and return to
-inference mode before rerunning provisioning.
-
-## What the command installs
-
-- Native build/authentication/cgroup dependencies through apt, including MUNGE.
-- Checksum-pinned **Slurm 26.05.6** under `/opt/eliza-slurm/26.05.6`, with REST
-  API `v0.0.45`, JWT, NVML, and cgroup-v2 support. The first run builds from the
-  official SchedMD release; subsequent runs reuse the completed installation.
-- One discovered CPU/GPU node and one `training` partition. Memory headroom is
-  the greater of 8 GiB or 10% of reported host RAM. Override the floor with
-  `--reserve-memory-mb <MiB>`. The installer validates the discovered topology
-  rather than assuming an x86 or homogeneous ARM CPU layout.
-- Service accounts, persistent state/log/run directories, authentication keys,
-  and a root-owned, allowlisted administrative helper for the control account.
-- Independent bootstrap and training environments under `/opt/eliza-training`,
-  prepared by the **nlp-lab-owned runtime profile**. Its selected TRL profile
-  currently requires CPython 3.12, CUDA 13 and driver 580 or newer. Profile versions,
-  requirements and verification belong to `nlp-lab`; host setup delegates to it.
-- The pinned `nlp-lab-training` package supplies the worker, client and GPU probe.
-  There is no vendored worker or training dependency list in this repository.
-- A control-only environment at `.venvs/control`, a persistent control-token
-  file, and the user systemd control service. Startup uses the prepared Python
-  environment and checks `/health`. User lingering is enabled so the control
-  service can start at boot and remain available after SSH logout.
-
-Root Slurm units have no boot enablement. Runtime masks prevent package
-maintainer scripts from starting services during dependency installation. Masks
-created by the installer are removed on success/failure; pre-existing masks are
-preserved. Final verification requires the scheduler services to be stopped
-and disabled/static. The control daemon is the component left running.
-
-The supported automatic host profile is Ubuntu/Debian **ARM64**, booted with
-systemd and cgroup v2, with exactly one NVIDIA GPU. Unsupported configurations
-fail preflight rather than receiving guessed configuration.
-
-## Storage and credentials
-
-### Canonical training package source
-
-`configs/training-source.json` pins the source repository, full commit and
-`packages/training-client` subdirectory. The installer archives that exact Git
-tree as your normal user, verifies/caches its digest, then passes it into the
-privileged host stage. Git authentication never runs as root.
-
-It automatically uses a sibling `nlp-lab` clone containing the pinned commit;
-otherwise it fetches the pinned revision into its own cache using your Git/SSH
-access. To supply another existing clone:
-
-```bash
-./scripts/setup control --nlp-lab /path/to/nlp-lab
-```
-
-Uncommitted edits in that clone are preserved and do not enter the installation
-snapshot. Cached snapshots can be reused offline. The host receipt records the
-source commit and archive hash. The bootstrap installs the package's provisioning
-extra and delegates setup to `python -m nlp_training.provision`; the control
-environment stays independent of the training package.
-
-Rerunning the installer migrates the previous owned standalone worker to the
-package entrypoint `python -m nlp_training.worker`. A changed/unmanaged old worker
-is preserved and reported instead of removed.
-
-The installer reads `STORAGE_URL`, `STORAGE_ACCOUNT`, `STORAGE_KEY` (or the
-`*_FILE` credential variants) from the operator's environment/`.env`. If settings
-are missing on an interactive terminal, it prompts for the endpoint and hidden
-credentials. Leave the endpoint empty to finish control/GPU infrastructure
-setup first; dataset jobs will still need storage configured.
-
-For automation, provide those settings and use:
-
-```bash
-./scripts/setup control --non-interactive
-```
-
-Credentials go to protected files under `/etc/eliza-training/`, readable by the
-training account, and are passed to the host installer through stdin rather
-than command-line arguments. Do not commit `.env` or credential files. The
-MLflow URL comes from `MLFLOW_TRACKING_URI`, defaulting to the homelab endpoint.
-Site-specific MLflow/HF access credentials can be added to the protected runtime
-environment before the corresponding experiment.
-
-Generated host-control settings live in `.runtime/control-install.env` and take
-precedence over old control/Slurm defaults in `.env`. Your inference profiles and
-backend settings continue to come from their normal configuration. The installer
-preserves an existing control token, or creates `.runtime/control-token` with
-mode 0600. Transfer that credential using your secret-management mechanism into
-Jupyter as `CONTROL_DAEMON_TOKEN_FILE`; do not print it in a notebook.
-
-Configure Jupyter with:
-
-```text
-INFERENCE_CONTROL_URL=http://<DGX-address>:8030
-SLURM_REST_URL=http://<DGX-address>:6820
-CONTROL_DAEMON_TOKEN_FILE=<mounted-control-secret-file>
-```
-
-The client obtains/refreshes a JWT for the fixed `eliza-training` account through
-the authenticated control API. No manual Slurm token command is required.
-
-To prepare only scheduler/bootstrap infrastructure and defer GPU libraries:
-
-```bash
-./scripts/setup control --training-profile bootstrap
-# Later, install the default TRL training profile:
-./scripts/setup control --training-profile trl
-```
-
-The bootstrap profile is not ready for the GPU probe/model training until the
-TRL profile has been installed. No models or datasets are downloaded by setup.
-
-## First acceptance test
-
-After setup, first inspect the offline installation check in inference mode:
-
-```bash
+./scripts/setup control --plan
+./scripts/setup control
 ./scripts/setup control --check
-./scripts/environment status
 ```
 
-`--check` validates binaries, generated REST schema and GPU discovery without
-starting Slurm. Its report distinguishes configured storage from deferred storage.
+The existing `scripts/installation-suite/install-control-daemon` entrypoint is
+equivalent. It requests sudo for native host provisioning.
 
-Then explicitly hand over the GPU and submit the small probe:
+## Authority
+
+This installer owns **Slurm and inference/Slurm GPU handover only**. It installs
+native Slurm 26.05.6, MUNGE/JWT, GPU discovery/cgroups, service accounts, scheduler
+state/log/job directories, an allowlisted control helper and the thin control
+daemon's environment. It neither fetches `nlp-lab` nor chooses/installs training
+frameworks, Python training environments, workers, models or dataset/storage settings.
+
+The scheduler services stay stopped and disabled/static during inference. The
+control daemon remains available across SSH logout through user lingering.
+Inference and Slurm-enabled modes are mutually exclusive; this concerns GPU
+ownership, not a particular training runtime.
+
+The supported host is Ubuntu/Debian ARM64 with systemd, cgroup v2 and one NVIDIA
+GPU. The installer reuses the existing NVIDIA driver and discovers CPU/RAM/GPU
+resources. Node memory reserves the greater of 8 GiB or 10% for the host; change
+the floor with `--reserve-memory-mb`. Runtime/driver compatibility is the job
+submitter's responsibility.
+
+## Advertisement and access
+
+Set a scheduler URL reachable from Jupyter, when automatic hostname discovery
+does not resolve from the pod:
 
 ```bash
+./scripts/setup control --slurm-url http://<DGX-address>:6820
+```
+
+Alternatively set `ELIZA_SLURM_PUBLIC_URL` in the operator environment. The
+installer writes `/etc/eliza-slurm/host.json` with scheduler capabilities.
+
+```bash
+./scripts/environment advertise
 ./scripts/environment training
-./scripts/training-smoke
 ```
 
-The probe uses the control API/JWT and Slurm REST, performs a small CUDA
-forward/backward operation, verifies finite loss/gradients, and saves `probe.pt`.
-It requires no HASS dataset or MinIO credentials. It prints a probe UUID and
-Slurm job ID; logs and artifacts live under `/var/lib/eliza-training/runs/`.
-Use your host-admin access to inspect those local files.
-`scripts/training-smoke` is only a launcher for `nlp_training.smoke`; it contains
-no training or Slurm submission implementation.
+Authenticated API:
 
-In another terminal while the probe is holding its CUDA allocation:
+- `GET /slurm`: REST URL, validated API versions, partitions/GPU/CPU/memory/time
+  limits, job workspace/account, current mode and readiness;
+- `POST /slurm/token`: scoped scheduler credential for the configured non-root
+  job account; `/training/token` remains a compatibility alias;
+- `POST /environment/training`: release inference and enable Slurm;
+- `POST /environment/inference`: reject new submissions, require the queue to
+  drain, stop Slurm and restore previous inference profiles.
+
+Advertisement remains available while Slurm is stopped, with `ready: false`.
+There is no training package revision, runtime profile or interpreter in it.
+The generic job account is `eliza-slurm`, with a writable workspace at
+`/var/lib/slurm/jobs` and scheduler stdout/stderr directory `logs/`.
+
+The generated control token is at `.runtime/control-token` (0600). Transfer it
+through your secret-management mechanism to Jupyter as `CONTROL_DAEMON_TOKEN_FILE`.
+Configure `INFERENCE_CONTROL_URL` for the host API. A submitter can use the
+advertised REST URL or supply its own reachable `SLURM_REST_URL` override.
+
+## Jobs own their execution environment
+
+Install/use `nlp-lab`'s lightweight client in the notebook. It selects runtime
+code, dependencies, model/config/data, storage access and resource requests, then
+submits a normal Slurm batch script. Any environment preparation runs **inside
+that allocation under the job user**, without host-installer authority.
+
+The client carries its bootstrap/runtime package with the job. No training
+package needs to exist on the DGX before submission. Dataset jobs can fetch a
+checksum-pinned bundle using a limited-lifetime signed URL; probes can carry
+their small bundle inline. The OS Python used by the batch entrypoint is part
+of the host platform, not a host-selected model-training environment.
+
+See `nlp-lab/docs/runs/jupyter-slurm-training.md` for job submission and probes.
+After your jobs finish:
 
 ```bash
 ./scripts/environment inference
 ```
 
-Expected: a busy error and continued training mode. The probe holds for 30 seconds
-by default; `./scripts/training-smoke --hold-seconds 120` gives more time to test.
-After the job completes:
+A busy transition preserves Slurm mode and reports pending/running jobs. It never
+implicitly cancels work. The control daemon stays up in both modes.
 
-```bash
-./scripts/environment inference
-```
+## Verification, reruns and migration
 
-Expected: all Slurm/MUNGE services stop and the previously active inference
-profiles are restored and pass their smoke checks. The control service stays up.
-Do not resubmit a probe automatically after an ambiguous HTTP timeout: inspect
-its printed UUID/job ID and scheduler records first.
+`--check` verifies native binaries, generated REST schema and GPU discovery while
+in inference mode. It does not prepare a trainer. Runtime compatibility and a real
+GPU job require a separate submitter-owned acceptance test.
+
+The installation receipt records native managed files and completion. Reruns
+reuse verified binaries and preserve existing keys/state. Changed/unmanaged files
+are reported before replacement. Runtime masks prevent package scripts from
+activating scheduler services during install and are unwound on failure.
+
+On upgrade from the previous combined installer, run `./scripts/setup control`
+again. It updates the scheduler job account/advertisement and retires runtime
+selection from the receipt. Existing training environments, storage files and
+caches are left as user-managed assets; the host no longer consumes them.
 
 Useful diagnostics:
 
@@ -180,27 +112,3 @@ Useful diagnostics:
 systemctl --user status eliza-control-daemon.service
 sudo journalctl -u slurmctld.service -u slurmd.service -u slurmrestd.service
 ```
-
-Actual HASS training additionally requires a frozen SFT release, a private
-config, and the trainer fidelity fixes described in the HASS training plan.
-The GPU probe tests infrastructure, not the correctness of the training corpus.
-
-## Reruns and recovery
-
-The host receipt `/var/lib/eliza-control-install/receipt.json` records successful
-managed file writes and completion. A failed build/setup can be retried with the
-same command. Source archives and completed binaries are reused after checksum
-and plugin checks. Existing JWT/MUNGE keys, control credentials and scheduler state
-are preserved. No state-reset flags are passed to Slurm.
-
-Changed/unmanaged scheduler configuration or executable paths stop installation
-with their exact path; resolve the ownership/configuration conflict deliberately.
-Do not delete a live scheduler's state or overwrite its configuration to bypass
-this check. Runtime environment values are preserved; missing installer settings
-can be appended to an unmodified managed file. If you edited that file manually,
-add any missing storage settings there explicitly rather than losing your edits.
-An original recognized control systemd unit is backed up once before replacement.
-
-Build/dependency verification in the development workspace uses simulated host
-commands. A real DGX installation and GPU smoke run are still required for host
-acceptance; repository tests do not establish live GPU compatibility.

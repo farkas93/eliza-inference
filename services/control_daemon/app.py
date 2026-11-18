@@ -201,6 +201,7 @@ def switch_environment(mode: str) -> dict[str, Any]:
 
 
 @app.post("/training/token", dependencies=[Depends(_require_control_token)])
+@app.post("/slurm/token", dependencies=[Depends(_require_control_token)])
 def training_token() -> dict[str, Any]:
     # Unlike legacy trusted-LAN lifecycle routes, credential delegation requires auth.
     if not os.environ.get("CONTROL_DAEMON_TOKEN"):
@@ -210,4 +211,12 @@ def training_token() -> dict[str, Any]:
     )
     if not res["success"]:
         raise HTTPException(status_code=409 if res["returncode"] == 3 else 500, detail=res["stderr"])
+    return json.loads(res["stdout"])
+
+
+@app.get("/slurm", dependencies=[Depends(_require_control_token)])
+def slurm_advertisement() -> dict[str, Any]:
+    res = _run_script("environment", "advertise")
+    if not res["success"]:
+        raise HTTPException(status_code=503, detail=res["stderr"])
     return json.loads(res["stdout"])

@@ -6,7 +6,7 @@ PyTorch, TRL, Spark or training-package dependencies.
 
 ## Host provisioning
 
-Install the control daemon and its Slurm/training dependencies automatically:
+Install the control daemon and native Slurm automatically:
 
 ```bash
 ./scripts/setup control --plan
@@ -43,7 +43,7 @@ The control account needs permission for these exact administrative operations:
 - `systemctl start|stop` for the four training units above;
 - `scontrol update PartitionName=training State=UP|INACTIVE`.
 - `scontrol token username=<ELIZA_SLURM_USER> lifespan=<ELIZA_SLURM_TOKEN_LIFESPAN>`
-  for the one configured non-root training account (defaults `eliza-training`, 3600).
+  for the configured non-root scheduler job account (defaults `eliza-slurm`, 3600).
 
 Use a host-admin-installed narrowly scoped sudoers policy, with absolute command
 paths resolved on that host. Do not grant arbitrary shell or wildcard scontrol
@@ -75,6 +75,10 @@ REST equivalents, authenticated using the existing control token:
   control token even when legacy lifecycle routes allow trusted-LAN access. No
   caller-supplied username or lifetime is accepted. The notebook client caches and
   refreshes the credential without displaying or persisting it in run artifacts.
+
+`GET /slurm` advertises scheduler capabilities and readiness; `POST /slurm/token`
+is the canonical credential endpoint. The host has no trainer/package/profile
+selection API. A submitted batch job owns its execution runtime and dependencies.
 
 `GET /environment` reports persisted lifecycle state, not a live health check.
 Posting the current mode rechecks readiness. A busy switch returns HTTP 409;

@@ -196,7 +196,7 @@ class EnvironmentManager:
             if self.state()["phase"] != "training":
                 raise EnvironmentBusy("Training credentials are available only in training mode")
             self.verify("training")
-            user = os.environ.get("ELIZA_SLURM_USER", "eliza-training")
+            user = os.environ.get("ELIZA_SLURM_USER", "eliza-slurm")
             lifespan = int(os.environ.get("ELIZA_SLURM_TOKEN_LIFESPAN", "3600"))
             if not user or not 300 <= lifespan <= 86400:
                 raise EnvironmentError("Invalid configured training identity or token lifespan")
@@ -207,6 +207,21 @@ class EnvironmentManager:
                 raise EnvironmentError("Slurm did not return the expected credential format")
             return {"user_name": user, "token": output.removeprefix("SLURM_JWT="),
                     "expires_at": int(time.time()) + lifespan}
+
+    def advertise(self):
+        path = Path(os.environ.get("ELIZA_SLURM_HOST_CONFIG", "/etc/eliza-slurm/host.json"))
+        host = json.loads(path.read_text())
+        state = self.state()
+        ready, error = False, None
+        if state["phase"] == "training":
+            try:
+                self.verify("training")
+                ready = True
+            except Exception as exc:
+                error = str(exc)
+        return {"version": 1, "rest_url": host["rest_url"], "api_versions": host["api_versions"],
+                "partitions": host["partitions"], "workspace": host["workspace"], "job_user": host["job_user"],
+                "mode": state["phase"], "ready": ready, "error": error}
 
     def enter_training(self, state: dict):
         for service in reversed(SERVICES):
@@ -292,7 +307,7 @@ class EnvironmentManager:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Switch the DGX between inference and on-demand Slurm.")
-    parser.add_argument("command", choices=("status", "training", "inference", "token", "guard-start", "lock-held"))
+    parser.add_argument("command", choices=("status", "advertise", "training", "inference", "token", "guard-start", "lock-held"))
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     manager = EnvironmentManager(Path(__file__).resolve().parents[2])
@@ -303,7 +318,9 @@ def main() -> int:
             return 0 if manager.state()["phase"] in {"inference", "switching_to_inference"} else 1
         if args.command == "guard-start":
             return manager.guard_start(args.args[1:] if args.args[:1] == ["--"] else args.args)
-        if args.command == "token":
+        if args.command == "advertise":
+            print(json.dumps(manager.advertise()))
+        elif args.command == "token":
             print(json.dumps(manager.training_token()))
         elif args.command == "status":
             print(json.dumps(manager.state()))

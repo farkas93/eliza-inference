@@ -19,10 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def host(tmp_path, training_package):
+def host(tmp_path):
     owner = pwd.getpwuid(os.getuid())
     request = {"owner": owner.pw_name, "repo": str(ROOT), "state": str(tmp_path / "state/environment.json"),
-               "reserve_mb": 8192, "training_profile": "bootstrap", "storage": {}, "check": False, "training_package": training_package}
+               "reserve_mb": 8192, "slurm_url": "http://dgx-test:6820", "check": False}
     machine = tmp_path / "host"
     (machine / "etc").mkdir(parents=True)
     (machine / "etc/os-release").write_text('ID="ubuntu"\n')
@@ -157,13 +157,13 @@ def test_completed_slurm_build_is_reused_but_plugins_are_verified(host):
 def test_offline_install_checks_api_gpu_and_never_starts_scheduler(host):
     prepare_binaries(host)
     run, calls = simulator(host)
-    with patch.object(install, "run", side_effect=run), patch.object(host, "packages"), patch.object(host, "training"), patch.object(host, "account"):
+    with patch.object(install, "run", side_effect=run), patch.object(host, "packages"), patch.object(host, "account"):
         host.apply()
     assert json.loads(host.receipt_path.read_text())["complete"]
     assert json.loads(host.state.read_text())["phase"] == "inference"
     conf = host.p("/etc/slurm/slurm.conf").read_text()
     assert "State=INACTIVE" in conf and "RealMemory=115200" in conf
-    assert "AllowGroups=eliza-training" in conf
+    assert "AllowGroups=eliza-slurm" in conf
     assert any(call[-1] == "--generate-openapi-spec" for call in calls)
     assert not any(call[:2] == ["systemctl", "start"] for call in calls)
     assert "[Install]" not in host.p("/etc/systemd/system/slurmd.service").read_text()
@@ -176,17 +176,17 @@ def test_wrong_openapi_is_rejected(host):
 
 
 def test_privileged_helper_restricts_commands_accounts_and_lifetimes():
-    config = {"slurm_prefix": "/opt/eliza-slurm/26.05.6", "training_user": "eliza-training", "token_lifespan": 3600}
+    config = {"slurm_prefix": "/opt/eliza-slurm/26.05.6", "job_user": "eliza-slurm", "token_lifespan": 3600}
     assert command(["systemctl", "start", "slurmd.service"], config) == ["/usr/bin/systemctl", "start", "slurmd.service"]
-    assert command(["scontrol", "token", "username=eliza-training", "lifespan=3600"], config)[0].endswith("bin/scontrol")
+    assert command(["scontrol", "token", "username=eliza-slurm", "lifespan=3600"], config)[0].endswith("bin/scontrol")
     for args in (["systemctl", "start", "sshd.service"], ["scontrol", "token", "username=root", "lifespan=3600"],
-                 ["scontrol", "token", "username=eliza-training", "lifespan=86400"], ["bash", "-c", "arbitrary"]):
+                 ["scontrol", "token", "username=eliza-slurm", "lifespan=86400"], ["bash", "-c", "arbitrary"]):
         with pytest.raises(ValueError, match="allowlist"):
             command(args, config)
 
 
 def test_privileged_helper_rejects_other_caller_and_inference_mode_activation():
-    config = {"slurm_prefix": "/opt/eliza-slurm/26.05.6", "training_user": "eliza-training", "token_lifespan": 3600, "control_user": "control", "state": "/var/lib/eliza/environment.json"}
+    config = {"slurm_prefix": "/opt/eliza-slurm/26.05.6", "job_user": "eliza-slurm", "token_lifespan": 3600, "control_user": "control", "state": "/var/lib/eliza/environment.json"}
     with patch.object(slurm_admin.os, "getuid", return_value=0), patch.object(slurm_admin.Path, "read_text", return_value=json.dumps(config)), patch.dict(os.environ, {"SUDO_USER": "other"}):
         with pytest.raises(PermissionError, match="Caller"):
             slurm_admin.main()
@@ -204,28 +204,14 @@ def test_checksum_failure_never_publishes_download(tmp_path):
     assert not (tmp_path / "source").exists()
 
 
-def test_training_setup_delegates_to_the_pinned_package(host):
+def test_installer_does_not_fetch_or_prepare_a_training_runtime(host):
+    prepare_binaries(host)
     run, calls = simulator(host)
-    with patch.object(install, "run", side_effect=run):
-        host.training()
-    assert any("nlp_training.provision" in call for call in calls)
-    assert any(call[-1].endswith("[provisioning]") for call in calls)
-    assert not any("-r" in call or "torch" in " ".join(call) for call in calls)
-    assert host.receipt["training_package"]["revision"] == "0" * 40
-
-
-def test_migration_removes_only_an_unchanged_owned_worker(host):
-    worker = host.p("/opt/eliza-training/run_bundle.py")
-    host.managed(worker, "previous owned worker")
-    run, _ = simulator(host)
-    with patch.object(install, "run", side_effect=run):
-        host.training()
-    assert not worker.exists()
-    host.managed(worker, "previous owned worker")
-    worker.write_text("operator edits")
-    with patch.object(install, "run", side_effect=run), pytest.raises(RuntimeError, match="Preserving"):
-        host.training()
-    assert worker.read_text() == "operator edits"
+    with patch.object(install, "run", side_effect=run), patch.object(host, "packages"), patch.object(host, "account"):
+        host.apply()
+    assert not any("nlp_training" in " ".join(call) or "pip" in call or "git" in call for call in calls)
+    assert not host.p("/opt/eliza-training").exists()
+    assert not (ROOT / "configs/training-source.json").exists()
 
 
 def test_plan_entrypoints_do_not_call_privileged_commands():
@@ -236,10 +222,16 @@ def test_plan_entrypoints_do_not_call_privileged_commands():
     assert plan["scheduler_final_state"] == "stopped"
 
 
-def test_probe_wrapper_delegates_to_the_training_package():
-    script = (ROOT / "scripts/training-smoke").read_text()
-    assert "-m nlp_training.smoke" in script
-    assert not (ROOT / "scripts/lib/training_smoke.py").exists()
+def test_host_advertises_only_scheduler_capabilities(host):
+    run, _ = simulator(host)
+    with patch.object(install, "run", side_effect=run), patch.object(host, "account"):
+        host.cache.mkdir(parents=True)
+        host.configuration()
+    advertised = json.loads(host.p("/etc/eliza-slurm/host.json").read_text())
+    assert advertised["rest_url"] == "http://dgx-test:6820"
+    assert advertised["workspace"] == "/var/lib/slurm/jobs"
+    assert advertised["partitions"][0]["memory_mb"] == 115200
+    assert "training_package" not in advertised and "runtime" not in advertised
 
 
 def test_control_setup_uses_dedicated_python_preserves_token_and_checks_health(tmp_path):

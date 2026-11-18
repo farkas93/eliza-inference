@@ -16,7 +16,7 @@ def command(args, config):
     if args in (["scontrol", "update", "PartitionName=training", "State=UP"],
                 ["scontrol", "update", "PartitionName=training", "State=INACTIVE"]):
         return [str(prefix / "bin/scontrol"), *args[1:]]
-    expected = ["scontrol", "token", "username=" + config["training_user"],
+    expected = ["scontrol", "token", "username=" + config["job_user"],
                 "lifespan=" + str(config["token_lifespan"])]
     if args == expected:
         return [str(prefix / "bin/scontrol"), *args[1:]]
@@ -26,7 +26,7 @@ def command(args, config):
 def main():
     if os.getuid() != 0:
         raise PermissionError("This helper requires sudo")
-    config = json.loads(Path("/etc/eliza-training/host.json").read_text())
+    config = json.loads(Path("/etc/eliza-slurm/host.json").read_text())
     if os.environ.get("SUDO_USER") != config["control_user"]:
         raise PermissionError("Caller is not the configured control account")
     args = sys.argv[1:]

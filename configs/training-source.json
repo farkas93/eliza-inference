@@ -1,6 +1,0 @@
-{
-  "repository": "git@github.com:farkas93/nlp-lab.git",
-  "commit": "2f04cddea97b7e958754f4613cb528692a6c9e98",
-  "subdirectory": "packages/training-client",
-  "distribution": "nlp-lab-training"
-}

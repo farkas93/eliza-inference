@@ -22,6 +22,11 @@ from fastapi.testclient import TestClient
 
 
 class ControlDaemonTest(unittest.TestCase):
+    def test_scheduler_advertisement_route_has_no_runtime_fields(self) -> None:
+        report = {"version": 1, "rest_url": "http://slurm", "api_versions": ["v0.0.45"], "partitions": [], "workspace": "/jobs", "ready": False}
+        with patch.object(control_daemon, "_run_script", return_value={"success": True, "stdout": json.dumps(report)}) as run:
+            self.assertEqual(control_daemon.slurm_advertisement(), report)
+            run.assert_called_once_with("environment", "advertise")
     def test_token_http_route_authenticates_and_uses_only_host_identity(self) -> None:
         receipt = {"user_name": "training-account", "token": "fixture-jwt", "expires_at": 1000}
         with patch.dict(os.environ, {"CONTROL_DAEMON_TOKEN": "fixture-control-token"}), patch.object(control_daemon, "_run_lifecycle_operation", return_value={"success": True, "stdout": json.dumps(receipt)}) as run:

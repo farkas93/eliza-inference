@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import getpass
 import hashlib
 import io
 import json
@@ -27,11 +26,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import urlopen
 from urllib.parse import urlsplit
-
-if __package__:
-    from . import training_source
-else:
-    import training_source
 
 VERSION = "26.05.6"
 SLURM_SHA = "386a0d624fa7c730cf4dfa9171bf6dc66b6816b5683242c5271879999a54a9a7"
@@ -109,17 +103,7 @@ class Provisioner:
         self.receipt_path = self.p("/var/lib/eliza-control-install/receipt.json")
         self.receipt = json.loads(self.receipt_path.read_text()) if self.receipt_path.exists() else {"files": {}, "version": 1}
         self.state = Path(request["state"])
-        self.training_user = "eliza-training"
-        self.package_files = training_source.load_package(request["training_package"]) if request.get("training_package") else None
-        if self.package_files:
-            profiles = json.loads(self.package_files["nlp_training/profiles/runtime.json"])
-        else:
-            if not self.receipt.get("training_package"):
-                raise RuntimeError("Canonical training package is not installed yet; rerun ./scripts/setup control to migrate")
-            source = Path(self.receipt["training_package"]["source_dir"])
-            profiles = json.loads((source / "nlp_training/profiles/runtime.json").read_text())
-            request["training_profile"] = self.receipt.get("training_profile", request["training_profile"])
-        self.profile = profiles[request["training_profile"]]
+        self.job_user = "eliza-slurm"
 
     def p(self, path):
         return self.root / path.lstrip("/")
@@ -161,7 +145,7 @@ class Provisioner:
     def preflight(self):
         os_release = dict(line.split("=", 1) for line in self.p("/etc/os-release").read_text().splitlines() if "=" in line)
         if os_release.get("ID", "").strip('"') not in {"ubuntu", "debian"} or platform.machine() != "aarch64":
-            raise RuntimeError("Automatic training provisioning currently supports Ubuntu/Debian ARM64 DGX hosts")
+            raise RuntimeError("Automatic Slurm provisioning currently supports Ubuntu/Debian ARM64 DGX hosts")
         if not self.p("/run/systemd/system").exists() or not self.p("/sys/fs/cgroup/cgroup.controllers").exists():
             raise RuntimeError("A booted systemd host with cgroup v2 is required")
         if self.state.exists() and json.loads(self.state.read_text()).get("phase") != "inference":
@@ -182,9 +166,6 @@ class Provisioner:
         gpu = run(["nvidia-smi", "--query-gpu=index,driver_version", "--format=csv,noheader,nounits"]).stdout.strip().splitlines()
         if len(gpu) != 1:
             raise RuntimeError("This installation profile requires exactly one NVIDIA GPU")
-        minimum_driver = self.profile.get("minimum_driver_major", 0)
-        if int(gpu[0].split(",")[1].strip().split(".")[0]) < minimum_driver:
-            raise RuntimeError(f"The selected nlp-lab profile requires NVIDIA driver {minimum_driver} or later")
 
     def packages(self):
         # Runtime masks prevent dpkg maintainer scripts from activating MUNGE.
@@ -287,15 +268,13 @@ class Provisioner:
             raise RuntimeError("Slurm REST executable is missing")
 
     def configuration(self):
-        for user, home in (("slurm", None), ("slurmrest", None), (self.training_user, "/var/lib/eliza-training")):
+        for user, home in (("slurm", None), ("slurmrest", None), (self.job_user, "/var/lib/slurm/jobs")):
             self.account(user, home)
         for path, owner, mode in (("/var/lib/slurm/slurmctld", "slurm:slurm", 0o750),
                                   ("/var/lib/slurm/slurmd", "root:root", 0o755),
                                   ("/var/log/slurm", "slurm:slurm", 0o750),
-                                  ("/var/lib/eliza-training", "eliza-training:eliza-training", 0o750),
-                                  ("/var/lib/eliza-training/runs", "eliza-training:eliza-training", 0o750),
-                                  ("/var/lib/eliza-training/runs/logs", "eliza-training:eliza-training", 0o750),
-                                  ("/var/cache/eliza-training/huggingface", "eliza-training:eliza-training", 0o750)):
+                                  ("/var/lib/slurm/jobs", "eliza-slurm:eliza-slurm", 0o750),
+                                  ("/var/lib/slurm/jobs/logs", "eliza-slurm:eliza-slurm", 0o750)):
             self.directory(path, owner, mode)
         self.secret("/etc/slurm/jwt_hs256.key", "root:slurm")
         self.secret("/etc/munge/munge.key", "munge:munge", size=1024)
@@ -327,7 +306,7 @@ JobCompType=jobcomp/filetxt
 JobCompLoc=/var/log/slurm/completed-jobs.log
 JobRequeue=0
 NodeName={node} {fields} Gres=gpu:1 State=UNKNOWN
-PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXCLUSIVE AllowGroups=eliza-training DefaultTime=60 MaxTime=1440 DefMemPerNode=16384 MaxMemPerNode={discovered['RealMemory']}
+PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXCLUSIVE AllowGroups=eliza-slurm DefaultTime=60 MaxTime=1440 DefMemPerNode=16384 MaxMemPerNode={discovered['RealMemory']}
 """
         self.managed(self.p("/etc/slurm/slurm.conf"), config)
         self.managed(self.p("/etc/slurm/gres.conf"), "AutoDetect=nvml\n")
@@ -338,9 +317,12 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             extras += "Delegate=yes\n" if unit == "slurmd" else ""
             self.managed(self.p("/etc/systemd/system/" + unit + ".service"),
                          f"[Unit]\nDescription=Eliza on-demand {unit}\nAfter=network-online.target munge.service\nRequires=munge.service\n\n[Service]\nType=simple\nUser={user}\n{extras}ExecStart={self.prefix}/sbin/{unit} {args}\nRestart=on-failure\nRestartSec=5\n")
-        host = {"slurm_prefix": str(self.prefix), "training_user": self.training_user,
-                "control_user": self.owner.pw_name, "state": str(self.state), "node": node, "token_lifespan": 3600}
-        self.managed(self.p("/etc/eliza-training/host.json"), json.dumps(host, indent=2))
+        host = {"slurm_prefix": str(self.prefix), "job_user": self.job_user,
+                "control_user": self.owner.pw_name, "state": str(self.state), "node": node, "token_lifespan": 3600,
+                "rest_url": self.request["slurm_url"], "api_versions": ["v0.0.45"], "workspace": "/var/lib/slurm/jobs",
+                "partitions": [{"name": "training", "gpu_resource": "gres/gpu:1", "gpus": 1,
+                                "cpus": discovered["CPUs"], "memory_mb": discovered["RealMemory"], "max_time_minutes": 1440}]}
+        self.managed(self.p("/etc/eliza-slurm/host.json"), json.dumps(host, indent=2))
         self.managed(self.p("/usr/local/sbin/eliza-slurm-admin"), (self.repo / "scripts/lib/slurm_admin.py").read_bytes(), 0o755)
         policy = f"{self.owner.pw_name} ALL=(root) NOPASSWD: /usr/local/sbin/eliza-slurm-admin\n"
         # Validate before publishing privileges.
@@ -349,61 +331,6 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
         run(["visudo", "-cf", temporary])
         self.managed(self.p("/etc/sudoers.d/eliza-slurm-control"), policy, 0o440)
         self.receipt.update(node=node, resources=discovered, slurm_version=VERSION)
-
-    def training(self):
-        source = self.stage_training_package()
-        bootstrap = self.p("/opt/eliza-training/bootstrap")
-        if not (bootstrap / "bin/python").exists():
-            run([sys.executable, "-m", "venv", bootstrap], capture=False)
-        run([bootstrap / "bin/python", "-m", "pip", "install", str(source) + "[provisioning]"], capture=False)
-        training = self.p("/opt/eliza-training/venv")
-        run([bootstrap / "bin/python", "-m", "nlp_training.provision", "--profile", self.request["training_profile"],
-             "--root", self.p("/opt/eliza-training"), "--source", source], capture=False)
-        old_worker = self.p("/opt/eliza-training/run_bundle.py")
-        if old_worker.exists():
-            recorded = self.receipt["files"].get(str(old_worker))
-            if hashlib.sha256(old_worker.read_bytes()).hexdigest() != recorded:
-                raise RuntimeError("Preserving changed/unmanaged legacy training worker: " + str(old_worker))
-            old_worker.unlink()
-            self.receipt["files"].pop(str(old_worker))
-        runtime = {"ELIZA_TRAINING_PYTHON": str(training / "bin/python"),
-                   "HF_HOME": "/var/cache/eliza-training/huggingface",
-                   "MLFLOW_TRACKING_URI": self.request.get("mlflow_url") or "https://mlflow.chezombor.com/"}
-        storage = self.request.get("storage", {})
-        if storage:
-            for field, filename in (("account", "minio-account"), ("key", "minio-key")):
-                path = self.p("/etc/eliza-training/" + filename)
-                self.managed(path, storage[field] + "\n", 0o640)
-                run(["chown", "root:eliza-training", path])
-            runtime.update(STORAGE_URL=storage["url"], STORAGE_ACCOUNT_FILE="/etc/eliza-training/minio-account",
-                           STORAGE_KEY_FILE="/etc/eliza-training/minio-key", AWS_REGION="us-east-1")
-        path = self.p("/etc/eliza-training/runtime.env")
-        # Add missing installer settings while preserving existing operator values.
-        contents = path.read_text() if path.exists() else ""
-        keys = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", contents, re.MULTILINE))
-        addition = "".join(f"{key}={shlex.quote(value)}\n" for key, value in runtime.items() if key not in keys)
-        if addition:
-            self.managed(path, contents + ("\n" if contents and not contents.endswith("\n") else "") + addition, 0o640)
-            run(["chown", "root:eliza-training", path])
-        keys.update(runtime)
-        configured = "STORAGE_URL" in keys and any(key in keys for key in ("STORAGE_ACCOUNT", "STORAGE_ACCOUNT_FILE")) and any(key in keys for key in ("STORAGE_KEY", "STORAGE_KEY_FILE"))
-        self.receipt.update(training_profile=self.request["training_profile"], storage_configured=configured)
-
-    def stage_training_package(self):
-        descriptor = self.request["training_package"]
-        source = self.cache / "training-source" / descriptor["sha256"]
-        source.mkdir(parents=True, exist_ok=True)
-        for name, data in self.package_files.items():
-            path = source / name
-            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()):
-                raise RuntimeError("Unsafe installed training package path: " + name)
-            if path.exists() and path.read_bytes() != data:
-                raise RuntimeError("Preserving changed training package source: " + str(path))
-            if not path.exists():
-                atomic(path, data)
-        self.receipt["training_package"] = {key: descriptor[key] for key in ("revision", "sha256")}
-        self.receipt["training_package"]["source_dir"] = str(source)
-        return source
 
     def verify_api(self):
         result = run(["runuser", "-u", "slurmrest", "--", "env", "SLURM_JWT=daemon",
@@ -421,12 +348,8 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             if not self.receipt.get("complete"):
                 raise RuntimeError("Installation receipt is incomplete; rerun the installer")
             report = {key: self.receipt.get(key) for key in
-                      ("complete", "slurm_version", "node", "resources", "training_profile", "storage_configured")}
+                      ("complete", "slurm_version", "node", "resources")}
             report.update(scheduler_state="stopped", api="v0.0.45")
-            report["training_package"] = self.receipt.get("training_package")
-            source = self.receipt["training_package"]["source_dir"]
-            run([self.p("/opt/eliza-training/bootstrap/bin/python"), "-m", "nlp_training.provision", "--check",
-                 "--profile", self.request["training_profile"], "--root", self.p("/opt/eliza-training"), "--source", source], capture=False)
             print(json.dumps(report, indent=2))
 
     def apply(self):
@@ -438,7 +361,6 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             self.packages()
             self.slurm()
             self.configuration()
-            self.training()
             result = run([self.prefix / "sbin/slurmd", "-G"])
             if "gpu" not in (result.stdout + result.stderr).lower():
                 raise RuntimeError("slurmd -G did not report the GPU; inspect NVML/topology before activation")
@@ -456,6 +378,8 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             os.chown(self.state, self.owner.pw_uid, self.owner.pw_gid)
             run(["loginctl", "enable-linger", self.owner.pw_name])
             self.receipt.update(complete=True)
+            for retired in ("training_package", "training_profile", "storage_configured"):
+                self.receipt.pop(retired, None)
             atomic(self.receipt_path, json.dumps(self.receipt, indent=2).encode(), 0o600)
 
 
@@ -468,30 +392,11 @@ def configuration_request(args, repo: Path):
         legacy = repo / ".runtime/environment.json"
         state = str(legacy if legacy.exists() else Path(owner.pw_dir) / ".local/state/eliza/environment.json")
     state = str(Path(state).expanduser().resolve())
-    storage = {}
-    url = "" if args.check else os.environ.get("STORAGE_URL", "")
-    if not url and not args.check and not args.non_interactive and sys.stdin.isatty():
-        url = input("MinIO endpoint URL (leave empty to configure storage later): ").strip()
-    if url:
-        parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-            raise RuntimeError("STORAGE_URL must be an HTTP(S) endpoint without embedded credentials")
-        def value(name):
-            if os.environ.get(name):
-                result = os.environ[name]
-            elif os.environ.get(name + "_FILE"):
-                result = Path(os.environ[name + "_FILE"]).read_text().strip()
-            elif args.non_interactive or not sys.stdin.isatty():
-                raise RuntimeError("Missing " + name + " or " + name + "_FILE")
-            else:
-                result = getpass.getpass(name + ": ")
-            if not result:
-                raise RuntimeError("Credential cannot be empty: " + name)
-            return result
-        storage = {"url": url, "account": value("STORAGE_ACCOUNT"), "key": value("STORAGE_KEY")}
+    url = args.slurm_url or os.environ.get("ELIZA_SLURM_PUBLIC_URL") or "http://" + platform.node().split(".")[0] + ":6820"
+    if urlsplit(url).scheme not in {"http", "https"} or not urlsplit(url).hostname:
+        raise RuntimeError("Slurm advertisement URL must be HTTP(S)")
     return {"repo": str(repo), "owner": owner.pw_name, "state": state, "reserve_mb": args.reserve_memory_mb,
-            "training_profile": args.training_profile, "storage": storage,
-            "mlflow_url": os.environ.get("MLFLOW_TRACKING_URI", ""), "check": args.check}
+            "slurm_url": url, "check": args.check}
 
 
 def install_control(repo: Path, request: dict):
@@ -514,7 +419,7 @@ def install_control(repo: Path, request: dict):
                 "ELIZA_SLURM_ADMIN_PREFIX": "sudo -n /usr/local/sbin/eliza-slurm-admin",
                 "ELIZA_SLURM_PARTITION": "training", "ELIZA_SLURM_NODE": platform.node().split(".")[0],
                 "ELIZA_SLURM_REST_URL": "http://127.0.0.1:6820",
-                "ELIZA_SLURM_USER": "eliza-training", "ELIZA_SLURM_TOKEN_LIFESPAN": "3600"}
+                "ELIZA_SLURM_USER": "eliza-slurm", "ELIZA_SLURM_TOKEN_LIFESPAN": "3600"}
     atomic(runtime / "control-install.env", "".join(f"{key}={shlex.quote(value)}\n" for key, value in settings.items()).encode(), 0o600)
     unit = Path.home() / ".config/systemd/user/eliza-control-daemon.service"
     working = json.dumps(str(repo).replace("%", "%%"))
@@ -543,9 +448,7 @@ def install_control(repo: Path, request: dict):
             time.sleep(1)
     print("Control daemon installed. Slurm is provisioned and stopped; inference mode is preserved.")
     print("Control token file for Jupyter: " + str(token_file))
-    print("Next: ./scripts/environment training; then run the GPU smoke test described in docs/control-installation.md")
-    if not request["storage"]:
-        print("Storage still needs configuration in /etc/eliza-training/runtime.env before dataset jobs can run.")
+    print("Next: ./scripts/environment advertise; submit your own batch job after switching to training mode.")
 
 
 def main():
@@ -554,8 +457,7 @@ def main():
     parser.add_argument("--check", action="store_true", help="Check the installed host while in inference mode; no installs/activation")
     parser.add_argument("--root-stage", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--non-interactive", action="store_true")
-    parser.add_argument("--training-profile", choices=("trl", "bootstrap"), default="trl")
-    parser.add_argument("--nlp-lab", type=Path, help="Use an existing clone containing the pinned training package commit")
+    parser.add_argument("--slurm-url", help="Advertised REST URL reachable from submitting clients")
     parser.add_argument("--reserve-memory-mb", type=int, default=8192)
     args = parser.parse_args()
     if args.reserve_memory_mb < 1024:
@@ -564,10 +466,8 @@ def main():
     try:
         if args.plan:
             print(json.dumps({"slurm_version": VERSION, "api": "v0.0.45", "packages": PACKAGES,
-                              "training_profile": args.training_profile,
-                              "steps": ["host preflight", "masked package setup", "verified Slurm build", "accounts/configuration/keys/permissions", "isolated Python environments", "offline GPU discovery", "control daemon activation"],
-                              "scheduler_final_state": "stopped",
-                              "training_source": json.loads((repo / "configs/training-source.json").read_text())}, indent=2))
+                              "steps": ["host preflight", "masked package setup", "verified Slurm build", "accounts/configuration/keys/permissions", "offline GPU discovery", "control daemon activation"],
+                              "scheduler_final_state": "stopped"}, indent=2))
             return 0
         if args.root_stage:
             if os.getuid() != 0:
@@ -578,10 +478,6 @@ def main():
             provisioner.check() if request.get("check") else provisioner.apply()
         else:
             request = configuration_request(args, repo)
-            if not args.check:
-                config = json.loads((repo / "configs/training-source.json").read_text())
-                local_repo = args.nlp_lab or (repo.parent / "nlp-lab" if (repo.parent / "nlp-lab/.git").exists() else None)
-                request["training_package"] = training_source.prepare(config, repo / ".runtime/training-package", local_repo=local_repo)
             # Secrets travel over stdin, not command-line arguments or logs.
             result = subprocess.run(["sudo", *(["-n"] if args.non_interactive else []), sys.executable, str(Path(__file__).resolve()), "--root-stage"],
                                     input=json.dumps(request), text=True)

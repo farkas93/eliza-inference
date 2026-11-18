@@ -62,6 +62,14 @@ class FakeHost(EnvironmentManager):
 
 
 class TransitionTests(unittest.TestCase):
+    def test_advertisement_is_available_with_slurm_stopped(self):
+        path = self.root / "host.json"
+        path.write_text(json.dumps({"rest_url": "http://dgx:6820", "api_versions": ["v0.0.45"], "partitions": [], "workspace": "/jobs", "job_user": "job-user"}))
+        with patch.dict(os.environ, {"ELIZA_SLURM_HOST_CONFIG": str(path)}):
+            report = self.host.advertise()
+        self.assertEqual(report["mode"], "inference")
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["workspace"], "/jobs")
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
