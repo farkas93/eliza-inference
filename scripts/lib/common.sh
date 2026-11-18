@@ -8,6 +8,10 @@ load_env() {
     # shellcheck disable=SC1091
     source "$ROOT_DIR/.env"
   fi
+  if [[ -f "$ROOT_DIR/.runtime/control-install.env" ]]; then
+    # shellcheck disable=SC1091
+    source "$ROOT_DIR/.runtime/control-install.env"
+  fi
 
   MODEL_HOME="${MODEL_HOME:-$HOME/models}"
   HF_HOME="${HF_HOME:-$MODEL_HOME/huggingface}"

@@ -7,6 +7,14 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
   # shellcheck disable=SC1091
   source "$ROOT_DIR/.env"
 fi
+if [[ -f "$ROOT_DIR/.runtime/control-install.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.runtime/control-install.env"
+fi
+if [[ -n "${CONTROL_DAEMON_TOKEN_FILE:-}" ]]; then
+  CONTROL_DAEMON_TOKEN="$(< "$CONTROL_DAEMON_TOKEN_FILE")"
+  export CONTROL_DAEMON_TOKEN
+fi
 set +a
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8030}"
@@ -17,7 +25,9 @@ export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "Starting Eliza Control Daemon on ${HOST}:${PORT}"
 
-if command -v uv >/dev/null 2>&1; then
+if [[ -n "${CONTROL_DAEMON_PYTHON:-}" ]]; then
+  exec "$CONTROL_DAEMON_PYTHON" -m uvicorn services.control_daemon.app:app --host "$HOST" --port "$PORT"
+elif command -v uv >/dev/null 2>&1; then
   exec uv run \
     --project "$ROOT_DIR" \
     --with-requirements "$ROOT_DIR/services/control_daemon/requirements.txt" \

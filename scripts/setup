@@ -10,6 +10,7 @@ Usage: ./scripts/setup <command> [args]
 
 Commands:
   prerequisites           Install base prerequisites and .venvs/base
+  control [options]       Install host control, on-demand Slurm and isolated training runtime
   llamacpp [options]      Build/install llama.cpp CUDA binaries
   sglang [options]        Install SGLang runtime and verify GPU stack
   ds4 [options]           Build/install ds4 from source
@@ -44,6 +45,10 @@ if [[ $# -eq 0 ]]; then
 fi
 
 case "$1" in
+  control)
+    shift
+    exec "$SUITE_DIR/install-control-daemon" "$@"
+    ;;
   -h|--help)
     print_manual
     exit 0

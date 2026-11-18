@@ -6,7 +6,20 @@ PyTorch, TRL, Spark or training-package dependencies.
 
 ## Host provisioning
 
-Provision **single-node Slurm** independently, following the infrastructure
+Install the control daemon and its Slurm/training dependencies automatically:
+
+```bash
+./scripts/setup control --plan
+./scripts/setup control
+./scripts/setup control --check
+```
+
+See [the executable installation and acceptance guide](control-installation.md).
+The installer generates the settings/permissions described below and leaves Slurm
+stopped. The following details document the installed boundary and advanced
+deployment configuration; manual Slurm assembly is no longer the default path.
+
+The installed environment uses **single-node Slurm**, following the infrastructure
 runbook in `eliza-spark/docs/setup/dgx-slurm.md`. The service names are
 `munge.service`, `slurmctld.service`, `slurmd.service`, `slurmrestd.service`.
 They must be installed but **disabled at boot**, not enabled by another target.
@@ -39,8 +52,8 @@ for the control account (MUNGE identity configured during training).
 `ELIZA_SLURM_ADMIN_PREFIX` may be empty if a deployment supplies equivalent
 privileges through another host service boundary.
 
-This repository does not install packages, edit host sudoers or change live
-services during application verification.
+The explicit host installer installs packages and host permissions. Application
+verification tests do not install packages or activate live services.
 
 ## Operator interface
 

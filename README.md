@@ -51,6 +51,17 @@ mutually exclusive inference and Slurm environments. Slurm runs only in training
 mode; training dependencies remain separate. See
 [the training environment runbook](docs/training-environment.md).
 
+Install that control service **and its Slurm/training dependencies** on the DGX:
+
+```bash
+./scripts/setup control --plan
+./scripts/setup control
+```
+
+See [installation, configuration and GPU acceptance commands](docs/control-installation.md).
+The installer prepares isolated environments and leaves Slurm stopped until an
+explicit switch to training.
+
 Start speech services independently:
 
 ```bash
