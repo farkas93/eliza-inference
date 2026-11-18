@@ -28,11 +28,15 @@ from pathlib import Path
 from urllib.request import urlopen
 from urllib.parse import urlsplit
 
+if __package__:
+    from . import training_source
+else:
+    import training_source
+
 VERSION = "26.05.6"
 SLURM_SHA = "386a0d624fa7c730cf4dfa9171bf6dc66b6816b5683242c5271879999a54a9a7"
 HEADER_URL = "https://raw.githubusercontent.com/NVIDIA/go-nvml/v0.13.0-1/pkg/nvml/nvml.h"
 HEADER_SHA = "2d047fe07e92e038714674fe578ae76d9ec1eca55f17e09b81fb412d67adab99"
-RUNNER_SHA = "b7f6993030eebeec5d3016a3a39d99d6cd33ea1b41bcdd376ac74c246b4b7959"
 UNITS = ("munge.service", "slurmctld.service", "slurmd.service", "slurmrestd.service")
 PLUGINS = ("auth_munge", "auth_jwt", "rest_auth_jwt", "openapi_slurmctld",
            "data_parser_v0_0_45", "gpu_nvml", "cgroup_v2", "task_cgroup", "proctrack_cgroup")
@@ -106,6 +110,16 @@ class Provisioner:
         self.receipt = json.loads(self.receipt_path.read_text()) if self.receipt_path.exists() else {"files": {}, "version": 1}
         self.state = Path(request["state"])
         self.training_user = "eliza-training"
+        self.package_files = training_source.load_package(request["training_package"]) if request.get("training_package") else None
+        if self.package_files:
+            profiles = json.loads(self.package_files["nlp_training/profiles/runtime.json"])
+        else:
+            if not self.receipt.get("training_package"):
+                raise RuntimeError("Canonical training package is not installed yet; rerun ./scripts/setup control to migrate")
+            source = Path(self.receipt["training_package"]["source_dir"])
+            profiles = json.loads((source / "nlp_training/profiles/runtime.json").read_text())
+            request["training_profile"] = self.receipt.get("training_profile", request["training_profile"])
+        self.profile = profiles[request["training_profile"]]
 
     def p(self, path):
         return self.root / path.lstrip("/")
@@ -168,8 +182,9 @@ class Provisioner:
         gpu = run(["nvidia-smi", "--query-gpu=index,driver_version", "--format=csv,noheader,nounits"]).stdout.strip().splitlines()
         if len(gpu) != 1:
             raise RuntimeError("This installation profile requires exactly one NVIDIA GPU")
-        if self.request["training_profile"] == "trl" and int(gpu[0].split(",")[1].strip().split(".")[0]) < 580:
-            raise RuntimeError("The CUDA 13 training profile requires NVIDIA driver 580 or later; preserve the inference driver and resolve compatibility first")
+        minimum_driver = self.profile.get("minimum_driver_major", 0)
+        if int(gpu[0].split(",")[1].strip().split(".")[0]) < minimum_driver:
+            raise RuntimeError(f"The selected nlp-lab profile requires NVIDIA driver {minimum_driver} or later")
 
     def packages(self):
         # Runtime masks prevent dpkg maintainer scripts from activating MUNGE.
@@ -336,21 +351,21 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
         self.receipt.update(node=node, resources=discovered, slurm_version=VERSION)
 
     def training(self):
+        source = self.stage_training_package()
         bootstrap = self.p("/opt/eliza-training/bootstrap")
         if not (bootstrap / "bin/python").exists():
             run([sys.executable, "-m", "venv", bootstrap], capture=False)
-        run([bootstrap / "bin/python", "-m", "pip", "install", "boto3>=1.42,<2", "uv==0.9.18"], capture=False)
-        self.managed(self.p("/opt/eliza-training/run_bundle.py"), self.runner_bytes())
+        run([bootstrap / "bin/python", "-m", "pip", "install", str(source) + "[provisioning]"], capture=False)
         training = self.p("/opt/eliza-training/venv")
-        env = {**os.environ, "UV_PYTHON_INSTALL_DIR": str(self.p("/opt/eliza-training/python"))}
-        if not (training / "bin/python").exists():
-            run([bootstrap / "bin/uv", "venv", "--python", "3.12", training], env=env, capture=False)
-        if self.request["training_profile"] == "trl":
-            requirements = self.repo / "configs/training/requirements.sft-trl.txt"
-            run([bootstrap / "bin/uv", "pip", "install", "--python", training / "bin/python", "-r", requirements], env=env, capture=False)
-            run([bootstrap / "bin/uv", "pip", "check", "--python", training / "bin/python"], capture=False)
-            # Compile-time metadata/imports only: no GPU allocation during installation.
-            run([training / "bin/python", "-c", "import torch,importlib.util as u; assert torch.version.cuda == '13.0', torch.version.cuda; assert all(u.find_spec(n) for n in ('transformers','trl','peft','datasets','mlflow','bitsandbytes'))"], capture=False)
+        run([bootstrap / "bin/python", "-m", "nlp_training.provision", "--profile", self.request["training_profile"],
+             "--root", self.p("/opt/eliza-training"), "--source", source], capture=False)
+        old_worker = self.p("/opt/eliza-training/run_bundle.py")
+        if old_worker.exists():
+            recorded = self.receipt["files"].get(str(old_worker))
+            if hashlib.sha256(old_worker.read_bytes()).hexdigest() != recorded:
+                raise RuntimeError("Preserving changed/unmanaged legacy training worker: " + str(old_worker))
+            old_worker.unlink()
+            self.receipt["files"].pop(str(old_worker))
         runtime = {"ELIZA_TRAINING_PYTHON": str(training / "bin/python"),
                    "HF_HOME": "/var/cache/eliza-training/huggingface",
                    "MLFLOW_TRACKING_URI": self.request.get("mlflow_url") or "https://mlflow.chezombor.com/"}
@@ -374,11 +389,21 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
         configured = "STORAGE_URL" in keys and any(key in keys for key in ("STORAGE_ACCOUNT", "STORAGE_ACCOUNT_FILE")) and any(key in keys for key in ("STORAGE_KEY", "STORAGE_KEY_FILE"))
         self.receipt.update(training_profile=self.request["training_profile"], storage_configured=configured)
 
-    def runner_bytes(self):
-        data = (self.repo / "vendor/training/run_bundle.py").read_bytes()
-        if hashlib.sha256(data).hexdigest() != RUNNER_SHA:
-            raise RuntimeError("Bundled training runner checksum differs from its recorded version")
-        return data
+    def stage_training_package(self):
+        descriptor = self.request["training_package"]
+        source = self.cache / "training-source" / descriptor["sha256"]
+        source.mkdir(parents=True, exist_ok=True)
+        for name, data in self.package_files.items():
+            path = source / name
+            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()):
+                raise RuntimeError("Unsafe installed training package path: " + name)
+            if path.exists() and path.read_bytes() != data:
+                raise RuntimeError("Preserving changed training package source: " + str(path))
+            if not path.exists():
+                atomic(path, data)
+        self.receipt["training_package"] = {key: descriptor[key] for key in ("revision", "sha256")}
+        self.receipt["training_package"]["source_dir"] = str(source)
+        return source
 
     def verify_api(self):
         result = run(["runuser", "-u", "slurmrest", "--", "env", "SLURM_JWT=daemon",
@@ -398,6 +423,10 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             report = {key: self.receipt.get(key) for key in
                       ("complete", "slurm_version", "node", "resources", "training_profile", "storage_configured")}
             report.update(scheduler_state="stopped", api="v0.0.45")
+            report["training_package"] = self.receipt.get("training_package")
+            source = self.receipt["training_package"]["source_dir"]
+            run([self.p("/opt/eliza-training/bootstrap/bin/python"), "-m", "nlp_training.provision", "--check",
+                 "--profile", self.request["training_profile"], "--root", self.p("/opt/eliza-training"), "--source", source], capture=False)
             print(json.dumps(report, indent=2))
 
     def apply(self):
@@ -526,6 +555,7 @@ def main():
     parser.add_argument("--root-stage", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--training-profile", choices=("trl", "bootstrap"), default="trl")
+    parser.add_argument("--nlp-lab", type=Path, help="Use an existing clone containing the pinned training package commit")
     parser.add_argument("--reserve-memory-mb", type=int, default=8192)
     args = parser.parse_args()
     if args.reserve_memory_mb < 1024:
@@ -536,7 +566,8 @@ def main():
             print(json.dumps({"slurm_version": VERSION, "api": "v0.0.45", "packages": PACKAGES,
                               "training_profile": args.training_profile,
                               "steps": ["host preflight", "masked package setup", "verified Slurm build", "accounts/configuration/keys/permissions", "isolated Python environments", "offline GPU discovery", "control daemon activation"],
-                              "scheduler_final_state": "stopped"}, indent=2))
+                              "scheduler_final_state": "stopped",
+                              "training_source": json.loads((repo / "configs/training-source.json").read_text())}, indent=2))
             return 0
         if args.root_stage:
             if os.getuid() != 0:
@@ -547,6 +578,10 @@ def main():
             provisioner.check() if request.get("check") else provisioner.apply()
         else:
             request = configuration_request(args, repo)
+            if not args.check:
+                config = json.loads((repo / "configs/training-source.json").read_text())
+                local_repo = args.nlp_lab or (repo.parent / "nlp-lab" if (repo.parent / "nlp-lab/.git").exists() else None)
+                request["training_package"] = training_source.prepare(config, repo / ".runtime/training-package", local_repo=local_repo)
             # Secrets travel over stdin, not command-line arguments or logs.
             result = subprocess.run(["sudo", *(["-n"] if args.non_interactive else []), sys.executable, str(Path(__file__).resolve()), "--root-stage"],
                                     input=json.dumps(request), text=True)

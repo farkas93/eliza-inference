@@ -14,16 +14,15 @@ import pytest
 from scripts.lib import control_install as install
 from scripts.lib.slurm_admin import command
 from scripts.lib import slurm_admin
-from scripts.lib.training_smoke import job
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def host(tmp_path):
+def host(tmp_path, training_package):
     owner = pwd.getpwuid(os.getuid())
     request = {"owner": owner.pw_name, "repo": str(ROOT), "state": str(tmp_path / "state/environment.json"),
-               "reserve_mb": 8192, "training_profile": "bootstrap", "storage": {}, "check": False}
+               "reserve_mb": 8192, "training_profile": "bootstrap", "storage": {}, "check": False, "training_package": training_package}
     machine = tmp_path / "host"
     (machine / "etc").mkdir(parents=True)
     (machine / "etc/os-release").write_text('ID="ubuntu"\n')
@@ -205,8 +204,28 @@ def test_checksum_failure_never_publishes_download(tmp_path):
     assert not (tmp_path / "source").exists()
 
 
-def test_vendored_worker_matches_recorded_submission_protocol():
-    assert hashlib.sha256((ROOT / "vendor/training/run_bundle.py").read_bytes()).hexdigest() == install.RUNNER_SHA
+def test_training_setup_delegates_to_the_pinned_package(host):
+    run, calls = simulator(host)
+    with patch.object(install, "run", side_effect=run):
+        host.training()
+    assert any("nlp_training.provision" in call for call in calls)
+    assert any(call[-1].endswith("[provisioning]") for call in calls)
+    assert not any("-r" in call or "torch" in " ".join(call) for call in calls)
+    assert host.receipt["training_package"]["revision"] == "0" * 40
+
+
+def test_migration_removes_only_an_unchanged_owned_worker(host):
+    worker = host.p("/opt/eliza-training/run_bundle.py")
+    host.managed(worker, "previous owned worker")
+    run, _ = simulator(host)
+    with patch.object(install, "run", side_effect=run):
+        host.training()
+    assert not worker.exists()
+    host.managed(worker, "previous owned worker")
+    worker.write_text("operator edits")
+    with patch.object(install, "run", side_effect=run), pytest.raises(RuntimeError, match="Preserving"):
+        host.training()
+    assert worker.read_text() == "operator edits"
 
 
 def test_plan_entrypoints_do_not_call_privileged_commands():
@@ -217,12 +236,10 @@ def test_plan_entrypoints_do_not_call_privileged_commands():
     assert plan["scheduler_final_state"] == "stopped"
 
 
-def test_probe_is_gpu_allocated_and_python_body_compiles():
-    payload = job("00000000-0000-4000-8000-000000000001", 30)
-    assert payload["job"]["tres_per_node"] == "gres/gpu:1"
-    body = payload["script"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    compile(body, "probe", "exec")
-    assert "loss.backward()" in body and "torch.save" in body
+def test_probe_wrapper_delegates_to_the_training_package():
+    script = (ROOT / "scripts/training-smoke").read_text()
+    assert "-m nlp_training.smoke" in script
+    assert not (ROOT / "scripts/lib/training_smoke.py").exists()
 
 
 def test_control_setup_uses_dedicated_python_preserves_token_and_checks_health(tmp_path):

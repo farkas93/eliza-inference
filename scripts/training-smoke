@@ -6,4 +6,4 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 set -a
 load_env
 set +a
-exec "$(service_control_python)" "$ROOT_DIR/scripts/lib/training_smoke.py" "$@"
+exec "${ELIZA_TRAINING_BOOTSTRAP_PYTHON:-/opt/eliza-training/bootstrap/bin/python}" -m nlp_training.smoke "$@"

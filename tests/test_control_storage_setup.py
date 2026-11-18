@@ -23,10 +23,10 @@ def test_noninteractive_storage_validation_precedes_host_install(tmp_path):
             install.configuration_request(args, tmp_path)
 
 
-def test_storage_can_be_added_after_bootstrap_setup_without_losing_runtime_values(tmp_path):
+def test_storage_can_be_added_after_bootstrap_setup_without_losing_runtime_values(tmp_path, training_package):
     repo = Path(__file__).resolve().parents[1]
     request = {"owner": pwd.getpwuid(os.getuid()).pw_name, "repo": str(repo), "state": str(tmp_path / "state"),
-               "reserve_mb": 8192, "training_profile": "bootstrap", "storage": {}}
+               "reserve_mb": 8192, "training_profile": "bootstrap", "storage": {}, "training_package": training_package}
     host = install.Provisioner(request, root=tmp_path / "host")
     with patch.object(install, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
         host.training()

@@ -32,12 +32,12 @@ inference mode before rerunning provisioning.
   rather than assuming an x86 or homogeneous ARM CPU layout.
 - Service accounts, persistent state/log/run directories, authentication keys,
   and a root-owned, allowlisted administrative helper for the control account.
-- Independent bootstrap and **CPython 3.12 TRL training environments** under
-  `/opt/eliza-training`. The training profile pins a PyTorch CUDA 13 ARM64 wheel.
-  It requires the existing NVIDIA driver to be 580 or newer. The installer does
-  not upgrade the NVIDIA driver or inference's Python environments.
-- The pinned standalone run-bundle worker, shipped inside this repository.
-  A separate private `eliza-spark` checkout/download is not required.
+- Independent bootstrap and training environments under `/opt/eliza-training`,
+  prepared by the **nlp-lab-owned runtime profile**. Its selected TRL profile
+  currently requires CPython 3.12, CUDA 13 and driver 580 or newer. Profile versions,
+  requirements and verification belong to `nlp-lab`; host setup delegates to it.
+- The pinned `nlp-lab-training` package supplies the worker, client and GPU probe.
+  There is no vendored worker or training dependency list in this repository.
 - A control-only environment at `.venvs/control`, a persistent control-token
   file, and the user systemd control service. Startup uses the prepared Python
   environment and checks `/health`. User lingering is enabled so the control
@@ -54,6 +54,31 @@ systemd and cgroup v2, with exactly one NVIDIA GPU. Unsupported configurations
 fail preflight rather than receiving guessed configuration.
 
 ## Storage and credentials
+
+### Canonical training package source
+
+`configs/training-source.json` pins the source repository, full commit and
+`packages/training-client` subdirectory. The installer archives that exact Git
+tree as your normal user, verifies/caches its digest, then passes it into the
+privileged host stage. Git authentication never runs as root.
+
+It automatically uses a sibling `nlp-lab` clone containing the pinned commit;
+otherwise it fetches the pinned revision into its own cache using your Git/SSH
+access. To supply another existing clone:
+
+```bash
+./scripts/setup control --nlp-lab /path/to/nlp-lab
+```
+
+Uncommitted edits in that clone are preserved and do not enter the installation
+snapshot. Cached snapshots can be reused offline. The host receipt records the
+source commit and archive hash. The bootstrap installs the package's provisioning
+extra and delegates setup to `python -m nlp_training.provision`; the control
+environment stays independent of the training package.
+
+Rerunning the installer migrates the previous owned standalone worker to the
+package entrypoint `python -m nlp_training.worker`. A changed/unmanaged old worker
+is preserved and reported instead of removed.
 
 The installer reads `STORAGE_URL`, `STORAGE_ACCOUNT`, `STORAGE_KEY` (or the
 `*_FILE` credential variants) from the operator's environment/`.env`. If settings
@@ -127,6 +152,8 @@ forward/backward operation, verifies finite loss/gradients, and saves `probe.pt`
 It requires no HASS dataset or MinIO credentials. It prints a probe UUID and
 Slurm job ID; logs and artifacts live under `/var/lib/eliza-training/runs/`.
 Use your host-admin access to inspect those local files.
+`scripts/training-smoke` is only a launcher for `nlp_training.smoke`; it contains
+no training or Slurm submission implementation.
 
 In another terminal while the probe is holding its CUDA allocation:
 
