@@ -353,12 +353,19 @@ class EnvironmentManager:
         ping = self.run(["scontrol", "ping"]).stdout
         if "is UP" not in ping:
             raise EnvironmentError("Slurm controller is not ready: " + ping.strip())
+        # Slurm rejects --all together with --partition. Include the partition
+        # name (%R, without the default-partition asterisk) and filter locally.
         rows = self.run(["sinfo", "--all", "--noheader", "--nodes=" + self.node,
-                         "--partition=" + self.partition, "--format=%a|%T|%E"]).stdout.strip().splitlines()
-        if not rows:
-            raise EnvironmentError(f"Slurm returned no matching node {self.node} in partition {self.partition}")
+                         "--format=%R|%a|%T|%E"]).stdout.splitlines()
+        matching = []
         for row in rows:
-            fields = row.lower().split("|", 2)
+            partition, _, detail = row.partition("|")
+            if partition.strip() == self.partition:
+                matching.append(detail)
+        if not matching:
+            raise EnvironmentError(f"Slurm returned no matching node {self.node} in partition {self.partition}")
+        for row in matching:
+            fields = [field.strip().lower() for field in row.split("|", 2)]
             if len(fields) != 3 or fields[0] != "up" or fields[1] not in {"idle", "allocated", "mixed", "completing"}:
                 raise EnvironmentError(f"Slurm node {self.node} is not ready in {self.partition} (availability|state|reason): {row}")
         if any(self.running(service) for service in SERVICES):

@@ -25,7 +25,7 @@ class FakeHost(EnvironmentManager):
         self.jobs = ""
         self.gpu_processes = ""
         self.gpu_samples = []
-        self.node_rows = "up|idle|none"
+        self.node_rows = f"{self.partition}|up|idle|none"
         self.smoke_failures = []
         self.failure = None
         self.profile_path.write_text(json.dumps({"eliza-small": "small/exact-profile"}))
@@ -54,6 +54,8 @@ class FakeHost(EnvironmentManager):
         if args[0] == "squeue":
             out = self.jobs if "--all" in args else ""
         if args[0] == "sinfo":
+            if "--all" in args and any(arg in {"-p", "--partition"} or arg.startswith("--partition=") for arg in args):
+                raise EnvironmentError("sinfo: Conflicting options, -a and -p")
             out = self.node_rows if "--all" in args else ""
         if args[:2] == ["scontrol", "ping"]:
             out = "Slurmctld(primary) at dgx is UP"
@@ -178,11 +180,20 @@ class TransitionTests(unittest.TestCase):
     def test_slurm_readiness_reports_missing_nodes_and_drain_reason(self):
         self.host.active = set(self.host.units)
         self.host.sessions.clear()
-        for rows, detail in (("", "no matching node"), ("up|drained|Low RealMemory", "Low RealMemory")):
+        for rows, detail in (("", "no matching node"), ("other|up|idle|none", "no matching node"),
+                             (f"other|up|idle|none\n{self.host.partition}|up|drained|Low RealMemory", "Low RealMemory")):
             with self.subTest(rows=rows):
                 self.host.node_rows = rows
                 with self.assertRaisesRegex(EnvironmentError, detail):
                     self.host.verify("training")
+
+    def test_slurm_readiness_ignores_other_partitions(self):
+        self.host.active = set(self.host.units)
+        self.host.sessions.clear()
+        self.host.node_rows += "\nother|down|idle|none"
+        self.host.verify("training")
+        self.assertIn(["sinfo", "--all", "--noheader", "--nodes=" + self.host.node,
+                       "--format=%R|%a|%T|%E"], self.host.commands)
 
     def test_disabled_training_does_not_stop_inference(self):
         with patch.dict(os.environ, {"ELIZA_TRAINING_ENABLED": "false"}):
