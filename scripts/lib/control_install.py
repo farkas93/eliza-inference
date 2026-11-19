@@ -40,9 +40,9 @@ PACKAGES = ("build-essential", "pkg-config", "bzip2", "ca-certificates", "python
             "libssl-dev", "libreadline-dev")
 
 
-def run(args, *, cwd=None, env=None, check=True, capture=True):
+def run(args, *, cwd=None, env=None, check=True, capture=True, timeout=None):
     result = subprocess.run([str(a) for a in args], cwd=cwd, env=env, text=True,
-                            capture_output=capture, check=False)
+                            capture_output=capture, check=False, timeout=timeout)
     if check and result.returncode:
         raise RuntimeError(f"{shlex.join([str(a) for a in args])} failed" +
                            (": " + result.stderr.strip() if capture else "; see output above"))
@@ -142,7 +142,7 @@ class Provisioner:
                 raise RuntimeError("Another host lifecycle operation is running") from exc
             yield
 
-    def preflight(self):
+    def preflight(self, *, allow_active_munge=False):
         os_release = dict(line.split("=", 1) for line in self.p("/etc/os-release").read_text().splitlines() if "=" in line)
         if os_release.get("ID", "").strip('"') not in {"ubuntu", "debian"} or platform.machine() != "aarch64":
             raise RuntimeError("Automatic Slurm provisioning currently supports Ubuntu/Debian ARM64 DGX hosts")
@@ -151,7 +151,7 @@ class Provisioner:
         if self.state.exists() and json.loads(self.state.read_text()).get("phase") != "inference":
             raise RuntimeError("Switch back to inference and resolve lifecycle errors before installing")
         for unit in UNITS:
-            if self.active(unit):
+            if self.active(unit) and not (allow_active_munge and unit == "munge.service"):
                 raise RuntimeError(f"{unit} is active; provisioning will not interrupt/adopt a live scheduler")
             enabled = run(["systemctl", "is-enabled", unit], check=False).stdout.strip()
             if enabled in {"masked", "masked-runtime"}:
@@ -339,12 +339,42 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
         if "/slurm/v0.0.45/job/submit" not in schema.get("paths", {}):
             raise RuntimeError("Installed REST API does not export the required v0.0.45 submission route")
 
+    @contextmanager
+    def verification_auth(self):
+        unit = "munge.service"
+        temporary = not self.active(unit)
+        try:
+            if temporary:
+                run(["systemctl", "start", unit])
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    probe = run(["munge", "-n"], check=False, timeout=2)
+                    if probe.returncode == 0:
+                        break
+                    detail = probe.stderr.strip()
+                except subprocess.TimeoutExpired:
+                    detail = "credential probe timed out"
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"MUNGE authentication did not become ready: {detail}")
+                time.sleep(0.25)
+            yield
+        finally:
+            if temporary:
+                run(["systemctl", "stop", unit])
+
+    def verify_scheduler_config(self):
+        with self.verification_auth():
+            result = run([self.prefix / "sbin/slurmd", "-G"])
+            if "gpu" not in (result.stdout + result.stderr).lower():
+                raise RuntimeError("slurmd -G did not report the GPU; inspect NVML/topology before activation")
+            self.verify_api()
+
     def check(self):
         with self.lock():
-            self.preflight()
+            self.preflight(allow_active_munge=True)
             self.verify_binaries()
-            self.verify_api()
-            run([self.prefix / "sbin/slurmd", "-G"])
+            self.verify_scheduler_config()
             if not self.receipt.get("complete"):
                 raise RuntimeError("Installation receipt is incomplete; rerun the installer")
             report = {key: self.receipt.get(key) for key in
@@ -361,10 +391,7 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
             self.packages()
             self.slurm()
             self.configuration()
-            result = run([self.prefix / "sbin/slurmd", "-G"])
-            if "gpu" not in (result.stdout + result.stderr).lower():
-                raise RuntimeError("slurmd -G did not report the GPU; inspect NVML/topology before activation")
-            self.verify_api()
+            self.verify_scheduler_config()
             run(["systemctl", "daemon-reload"])
             for unit in UNITS:
                 if self.active(unit):
@@ -454,7 +481,7 @@ def install_control(repo: Path, request: dict):
 def main():
     parser = argparse.ArgumentParser(description="Install control daemon and on-demand Slurm on an ARM64 DGX.")
     parser.add_argument("--plan", action="store_true", help="Print installation steps without changes or prompts")
-    parser.add_argument("--check", action="store_true", help="Check the installed host while in inference mode; no installs/activation")
+    parser.add_argument("--check", action="store_true", help="Verify in inference mode; only MUNGE may start temporarily")
     parser.add_argument("--root-stage", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--slurm-url", help="Advertised REST URL reachable from submitting clients")
@@ -466,7 +493,7 @@ def main():
     try:
         if args.plan:
             print(json.dumps({"slurm_version": VERSION, "api": "v0.0.45", "packages": PACKAGES,
-                              "steps": ["host preflight", "masked package setup", "verified Slurm build", "accounts/configuration/keys/permissions", "offline GPU discovery", "control daemon activation"],
+                              "steps": ["host preflight", "masked package setup", "verified Slurm build", "accounts/configuration/keys/permissions", "GPU and API checks with temporary MUNGE", "control daemon activation"],
                               "scheduler_final_state": "stopped"}, indent=2))
             return 0
         if args.root_stage:

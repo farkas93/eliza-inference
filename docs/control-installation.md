@@ -92,9 +92,13 @@ implicitly cancels work. The control daemon stays up in both modes.
 
 ## Verification, reruns and migration
 
-`--check` verifies native binaries, generated REST schema and GPU discovery while
-in inference mode. It does not prepare a trainer. Runtime compatibility and a real
-GPU job require a separate submitter-owned acceptance test.
+Installation and `--check` verify GPU discovery and the generated REST schema
+while in inference mode. Slurm's GPU probe requires MUNGE authentication, so
+the installer starts only `munge.service` for verification if it is stopped,
+waits for a credential probe to succeed, and stops it afterward even if a check
+fails. `--check` leaves an already-running MUNGE service alone. The Slurm
+controller, compute daemon and REST service stay stopped throughout. Runtime
+compatibility and a real GPU job require a separate submitter-owned test.
 
 The installation receipt records native managed files and completion. Reruns
 reuse verified binaries and preserve existing keys/state. Changed/unmanaged files

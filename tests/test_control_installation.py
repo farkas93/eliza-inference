@@ -33,16 +33,26 @@ def host(tmp_path):
         yield install.Provisioner(request, root=machine)
 
 
-def simulator(host, *, fail_on=None):
+def simulator(host, *, fail_on=None, munge_running=False, munge_retries=0):
     calls = []
     def run(args, **kwargs):
+        nonlocal munge_running, munge_retries
         args = [str(arg) for arg in args]
         calls.append(args)
         if fail_on and fail_on in " ".join(args):
             raise RuntimeError("simulated failure")
         out, code = "", 0
         if args[:2] == ["systemctl", "is-active"]:
-            code = 3
+            code = 0 if args[2] == "munge.service" and munge_running else 3
+        if args == ["systemctl", "start", "munge.service"]:
+            munge_running = True
+        if args == ["systemctl", "stop", "munge.service"]:
+            munge_running = False
+        if args == ["munge", "-n"]:
+            assert munge_running
+            if munge_retries:
+                munge_retries -= 1
+                return subprocess.CompletedProcess(args, 1, "", "socket not ready")
         if args[:2] == ["systemctl", "is-enabled"]:
             out = "static" if args[2] != "munge.service" else "disabled"
         if args[0] == "nvidia-smi":
@@ -52,6 +62,7 @@ def simulator(host, *, fail_on=None):
         if args[-1:] == ["-C"]:
             out = "NodeName=dgx-test CPUs=10 Boards=1 SocketsPerBoard=1 CoresPerSocket=10 ThreadsPerCore=1 RealMemory=128000\nUpTime=100"
         if args[-1:] == ["-G"]:
+            assert munge_running, "slurmd -G requires MUNGE"
             out = "1 GPU system device(s) detected\nName=gpu Count=1"
         if args[-1:] == ["--generate-openapi-spec"]:
             out = json.dumps({"paths": {"/slurm/v0.0.45/job/submit": {}}})
@@ -154,7 +165,7 @@ def test_completed_slurm_build_is_reused_but_plugins_are_verified(host):
             host.verify_binaries()
 
 
-def test_offline_install_checks_api_gpu_and_never_starts_scheduler(host):
+def test_install_checks_api_gpu_with_temporary_munge_and_no_scheduler(host):
     prepare_binaries(host)
     run, calls = simulator(host)
     with patch.object(install, "run", side_effect=run), patch.object(host, "packages"), patch.object(host, "account"):
@@ -165,8 +176,40 @@ def test_offline_install_checks_api_gpu_and_never_starts_scheduler(host):
     assert "State=INACTIVE" in conf and "RealMemory=115200" in conf
     assert "AllowGroups=eliza-slurm" in conf
     assert any(call[-1] == "--generate-openapi-spec" for call in calls)
-    assert not any(call[:2] == ["systemctl", "start"] for call in calls)
+    assert [call for call in calls if call[:2] == ["systemctl", "start"]] == [["systemctl", "start", "munge.service"]]
+    assert calls.index(["munge", "-n"]) < calls.index([str(host.prefix / "sbin/slurmd"), "-G"])
+    assert calls.index(["systemctl", "stop", "munge.service"]) > next(i for i, call in enumerate(calls) if call[-1] == "--generate-openapi-spec")
     assert "[Install]" not in host.p("/etc/systemd/system/slurmd.service").read_text()
+
+
+@pytest.mark.parametrize("already_running", [False, True])
+def test_check_waits_for_munge_and_preserves_its_initial_state(host, already_running):
+    prepare_binaries(host)
+    host.receipt["complete"] = True
+    run, calls = simulator(host, munge_running=already_running, munge_retries=1)
+    with patch.object(install, "run", side_effect=run), patch.object(install.time, "sleep"):
+        host.check()
+    assert calls.count(["munge", "-n"]) == 2
+    transitions = [call for call in calls if call[:2] in (["systemctl", "start"], ["systemctl", "stop"])]
+    assert transitions == ([] if already_running else [["systemctl", "start", "munge.service"], ["systemctl", "stop", "munge.service"]])
+
+
+def test_check_stops_temporary_munge_on_gpu_probe_failure(host):
+    prepare_binaries(host)
+    run, calls = simulator(host, fail_on="slurmd -G")
+    with patch.object(install, "run", side_effect=run), pytest.raises(RuntimeError, match="simulated failure"):
+        host.check()
+    assert calls[-1] == ["systemctl", "stop", "munge.service"]
+
+
+def test_check_stops_temporary_munge_on_readiness_timeout(host):
+    prepare_binaries(host)
+    run, calls = simulator(host, munge_retries=1)
+    with patch.object(install, "run", side_effect=run), patch.object(install.time, "monotonic", side_effect=[0, 11]):
+        with pytest.raises(RuntimeError, match="MUNGE authentication did not become ready: socket not ready"):
+            host.check()
+    assert calls[-1] == ["systemctl", "stop", "munge.service"]
+    assert not any(call[-1] == "-G" for call in calls)
 
 
 def test_wrong_openapi_is_rejected(host):
