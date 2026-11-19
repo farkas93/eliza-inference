@@ -108,6 +108,17 @@ implicitly cancels work. All job submissions must target the single `training`
 partition; do not add alternative partitions which bypass this boundary.
 
 The original restore snapshot survives failures and control-daemon restarts.
+If returning to inference stopped partway through, retry the inference switch.
+It keeps services already running the saved profiles, waits for their smoke
+checks, then starts the remaining services. Slurm must be stopped and any GPU
+processes must belong to the saved, running inference services. An unrelated
+or unidentifiable GPU process still blocks the switch.
+
+`ELIZA_GPU_RELEASE_TIMEOUT_SECONDS` (default `15`) allows GPU processes time
+to exit after shutdown. `ELIZA_INFERENCE_READY_TIMEOUT_SECONDS` (default `150`)
+is the per-service smoke-check retry window for cold model loads. If increasing
+these, allow enough time in `CONTROL_START_TIMEOUT_SECONDS` and the client request.
+
 After inspecting the persisted error and actual host state, retry the desired
 mode. A partial training startup can be recovered by switching to inference.
 Do not delete the state file to clear an error: that loses the restore snapshot

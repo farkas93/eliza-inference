@@ -24,6 +24,9 @@ class FakeHost(EnvironmentManager):
         self.commands = []
         self.jobs = ""
         self.gpu_processes = ""
+        self.gpu_samples = []
+        self.node_rows = "up|idle|none"
+        self.smoke_failures = []
         self.failure = None
         self.profile_path.write_text(json.dumps({"eliza-small": "small/exact-profile"}))
 
@@ -33,7 +36,7 @@ class FakeHost(EnvironmentManager):
     def unit_active(self, unit, *, user=False):
         return unit in self.active
 
-    def run(self, args, *, check=True, admin=False):
+    def run(self, args, *, check=True, admin=False, timeout=None):
         self.commands.append(args)
         if self.failure and self.failure in " ".join(args):
             raise EnvironmentError("injected host failure")
@@ -49,15 +52,22 @@ class FakeHost(EnvironmentManager):
         if args[0].endswith("scripts/start"):
             self.sessions.add(args[1])
         if args[0] == "squeue":
-            out = self.jobs
+            out = self.jobs if "--all" in args else ""
         if args[0] == "sinfo":
-            out = "idle"
+            out = self.node_rows if "--all" in args else ""
         if args[:2] == ["scontrol", "ping"]:
             out = "Slurmctld(primary) at dgx is UP"
         if args[:2] == ["scontrol", "token"]:
             out = "SLURM_JWT=fixture-jwt"
         if args[0] == "nvidia-smi":
-            out = self.gpu_processes
+            out = self.gpu_samples.pop(0) if self.gpu_samples else self.gpu_processes
+        if args[:2] == ["tmux", "list-panes"] and "=eliza-small" in args:
+            out = "100"
+        if args[0] == "ps":
+            out = "100 1\n101 100\n102 101\n999 1"
+        if args[0].endswith("scripts/smoke-test") and args[1] in self.smoke_failures:
+            self.smoke_failures.remove(args[1])
+            return subprocess.CompletedProcess(args, 1, "", "HTTP Error 503: Service Unavailable")
         return subprocess.CompletedProcess(args, 0, out, "")
 
 
@@ -74,7 +84,7 @@ class TransitionTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / ".runtime").mkdir()
-        self.env = patch.dict(os.environ, {"ELIZA_TRAINING_ENABLED": "true"})
+        self.env = patch.dict(os.environ, {"ELIZA_TRAINING_ENABLED": "true", "ELIZA_GPU_RELEASE_TIMEOUT_SECONDS": "0"})
         self.env.start()
         self.host = FakeHost(self.root)
 
@@ -126,6 +136,53 @@ class TransitionTests(unittest.TestCase):
             self.host.switch("training")
         self.assertFalse(self.host.active)
         self.assertEqual(self.host.state()["phase"], "failed")
+
+    def test_training_waits_for_gpu_release(self):
+        self.host.gpu_samples = ["102", ""]
+        with patch.dict(os.environ, {"ELIZA_GPU_RELEASE_TIMEOUT_SECONDS": "5"}), patch("scripts.lib.environment.time.sleep") as sleep:
+            self.assertEqual(self.host.switch("training")["phase"], "training")
+        sleep.assert_called_once()
+
+    def test_inference_retries_smoke_test_while_model_loads(self):
+        self.host.switch("training")
+        self.host.smoke_failures = ["eliza-small"]
+        with patch("scripts.lib.environment.time.sleep") as sleep:
+            self.assertEqual(self.host.switch("inference")["phase"], "inference")
+        sleep.assert_called_once()
+
+    def test_resume_failed_restore_keeps_saved_service_but_rejects_unrelated_gpu(self):
+        restore = [{"service": "eliza-small", "profile": "small/exact-profile"},
+                   {"service": "eliza-medium", "profile": "medium/exact-profile"},
+                   {"service": "vocode-bridge", "profile": "vocode/bridge-local"}]
+        self.host.save({"version": 1, "phase": "failed", "target": "inference", "restore": restore})
+        self.host.gpu_processes = "102\n999"
+        with self.assertRaisesRegex(EnvironmentError, r"blocked: 999$"):
+            self.host.switch("inference")
+        self.assertEqual(self.host.sessions, {"eliza-small"})
+
+        self.host.gpu_processes = "102"
+        self.assertEqual(self.host.switch("inference")["phase"], "inference")
+        starts = [args[1] for args in self.host.commands if args[0].endswith("scripts/start")]
+        self.assertEqual(starts, ["eliza-medium", "vocode-bridge"])
+
+    def test_restore_timeout_preserves_snapshot(self):
+        self.host.switch("training")
+        self.host.smoke_failures = ["eliza-small"]
+        with patch.dict(os.environ, {"ELIZA_INFERENCE_READY_TIMEOUT_SECONDS": "0"}):
+            with self.assertRaisesRegex(EnvironmentError, "eliza-small .* did not become ready: HTTP Error 503"):
+                self.host.switch("inference")
+        state = self.host.state()
+        self.assertEqual(state["phase"], "failed")
+        self.assertEqual(state["restore"][0]["profile"], "small/exact-profile")
+
+    def test_slurm_readiness_reports_missing_nodes_and_drain_reason(self):
+        self.host.active = set(self.host.units)
+        self.host.sessions.clear()
+        for rows, detail in (("", "no matching node"), ("up|drained|Low RealMemory", "Low RealMemory")):
+            with self.subTest(rows=rows):
+                self.host.node_rows = rows
+                with self.assertRaisesRegex(EnvironmentError, detail):
+                    self.host.verify("training")
 
     def test_disabled_training_does_not_stop_inference(self):
         with patch.dict(os.environ, {"ELIZA_TRAINING_ENABLED": "false"}):

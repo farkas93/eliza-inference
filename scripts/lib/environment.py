@@ -88,7 +88,7 @@ class EnvironmentManager:
         except (KeyError, ValueError, OSError):
             return False
 
-    def run(self, args: list[str], *, check: bool = True, admin: bool = False):
+    def run(self, args: list[str], *, check: bool = True, admin: bool = False, timeout=None):
         env = os.environ.copy()
         fds = ()
         if self.fd is not None:
@@ -96,7 +96,8 @@ class EnvironmentManager:
             fds = (self.fd,)
         result = subprocess.run(
             (self.admin if admin else []) + args, cwd=self.root,
-            env=env, pass_fds=fds, capture_output=True, text=True, timeout=self.timeout,
+            env=env, pass_fds=fds, capture_output=True, text=True,
+            timeout=self.timeout if timeout is None else timeout,
         )
         if check and result.returncode:
             raise EnvironmentError(f"{shlex.join(args)} failed: {result.stderr.strip()}")
@@ -132,10 +133,54 @@ class EnvironmentManager:
                 result.append({"service": service, "profile": profile})
         return result
 
-    def gpu_idle(self):
-        result = self.run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader,nounits"])
-        if result.stdout.strip():
-            raise EnvironmentError("GPU compute processes remain; environment switch is blocked: " + result.stdout.strip())
+    def blocking_gpu_processes(self, services):
+        result = self.run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader,nounits"], timeout=5)
+        remaining = set(result.stdout.split())
+        if not remaining or not services:
+            return remaining
+        panes = set()
+        for service in services:
+            # All supported inference launchers run in the managed tmux session.
+            result = self.run(["tmux", "list-panes", "-s", "-t", "=" + self.session(service),
+                               "-F", "#{pane_pid}"], check=False, timeout=5)
+            if result.returncode == 0:
+                panes.update(result.stdout.split())
+        parents = dict(line.split() for line in self.run(["ps", "-eo", "pid=,ppid="], timeout=5).stdout.splitlines())
+        for pid in tuple(remaining):
+            ancestor = pid
+            seen = set()
+            while ancestor and ancestor not in seen:
+                if ancestor in panes:
+                    remaining.remove(pid)
+                    break
+                seen.add(ancestor)
+                ancestor = parents.get(ancestor)
+        return remaining
+
+    def wait_gpu_release(self, services=()):
+        deadline = time.monotonic() + int(os.environ.get("ELIZA_GPU_RELEASE_TIMEOUT_SECONDS", "15"))
+        while remaining := self.blocking_gpu_processes(services):
+            if time.monotonic() >= deadline:
+                raise EnvironmentError("GPU compute processes remain; environment switch is blocked: " +
+                                       ", ".join(sorted(remaining)))
+            time.sleep(0.5)
+
+    def wait_inference_ready(self, service, profile):
+        deadline = time.monotonic() + int(os.environ.get("ELIZA_INFERENCE_READY_TIMEOUT_SECONDS", "150"))
+        command = [str(self.root / "scripts/smoke-test"), service, "--profile", profile]
+        while True:
+            if not self.running(service):
+                raise EnvironmentError(f"{service} ({profile}) exited during restore; inspect ./scripts/logs {service}")
+            try:
+                result = self.run(command, check=False, timeout=min(30, max(1, deadline - time.monotonic())))
+                if result.returncode == 0:
+                    return
+                detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            except subprocess.TimeoutExpired:
+                detail = "smoke test timed out"
+            if time.monotonic() >= deadline:
+                raise EnvironmentError(f"{service} ({profile}) did not become ready: {detail}")
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
 
     def partition_state(self, state: str):
         self.run(["scontrol", "update", f"PartitionName={self.partition}", f"State={state}"], admin=True)
@@ -232,7 +277,7 @@ class EnvironmentManager:
                 self.run([str(self.root / "scripts/stop"), service])
         if any(self.running(service) for service in SERVICES):
             raise EnvironmentError("Inference sessions remain after shutdown")
-        self.gpu_idle()
+        self.wait_gpu_release()
         for unit in self.units[:-1]:
             self.run(["systemctl", "start", unit], admin=True)
         self.partition_state("UP")
@@ -272,7 +317,7 @@ class EnvironmentManager:
             self.partition_state("INACTIVE")
         self.run(["systemctl", "stop", "slurmrestd.service"], admin=True)
         if controller:
-            jobs = self.run(["squeue", "--noheader", "--format=%i %T"]).stdout.strip()
+            jobs = self.run(["squeue", "--all", "--noheader", "--format=%i %T"]).stdout.strip()
             if jobs:
                 self.partition_state("UP")
                 self.run(["systemctl", "start", "slurmrestd.service"], admin=True)
@@ -280,10 +325,20 @@ class EnvironmentManager:
         for unit in reversed(self.units[:-1]):
             self.run(["systemctl", "stop", unit], admin=True)
         self.verify("inference")
-        self.gpu_idle()
+        # A previous restore may have started a model before its smoke test passed.
+        # Allow only GPU processes belonging to live sessions with saved profiles.
+        profiles = {entry["service"]: entry["profile"] for entry in state["restore"]}
+        live = self.snapshot()
+        for entry in live:
+            if profiles.get(entry["service"]) != entry["profile"]:
+                raise EnvironmentError(f"Unexpected running inference profile for {entry['service']}: {entry['profile']}")
+        running = {entry["service"] for entry in live}
+        self.wait_gpu_release(running)
         for entry in state["restore"]:
-            self.run([str(self.root / "scripts/start"), entry["service"], "--profile", entry["profile"]])
-            self.run([str(self.root / "scripts/smoke-test"), entry["service"], "--profile", entry["profile"]])
+            service, profile = entry["service"], entry["profile"]
+            if service not in running or not self.running(service):
+                self.run([str(self.root / "scripts/start"), service, "--profile", profile])
+            self.wait_inference_ready(service, profile)
 
     def verify(self, mode: str, *, rest: bool = True):
         if mode == "inference":
@@ -298,9 +353,14 @@ class EnvironmentManager:
         ping = self.run(["scontrol", "ping"]).stdout
         if "is UP" not in ping:
             raise EnvironmentError("Slurm controller is not ready: " + ping.strip())
-        nodes = self.run(["sinfo", "--noheader", "--nodes=" + self.node, "--format=%T"]).stdout.split()
-        if not nodes or any(node.lower() not in {"idle", "allocated", "mixed", "completing"} for node in nodes):
-            raise EnvironmentError("Slurm compute node is not ready: " + " ".join(nodes))
+        rows = self.run(["sinfo", "--all", "--noheader", "--nodes=" + self.node,
+                         "--partition=" + self.partition, "--format=%a|%T|%E"]).stdout.strip().splitlines()
+        if not rows:
+            raise EnvironmentError(f"Slurm returned no matching node {self.node} in partition {self.partition}")
+        for row in rows:
+            fields = row.lower().split("|", 2)
+            if len(fields) != 3 or fields[0] != "up" or fields[1] not in {"idle", "allocated", "mixed", "completing"}:
+                raise EnvironmentError(f"Slurm node {self.node} is not ready in {self.partition} (availability|state|reason): {row}")
         if any(self.running(service) for service in SERVICES):
             raise EnvironmentError("Inference sessions are running in training mode")
 
