@@ -292,20 +292,32 @@ def test_host_advertises_only_scheduler_capabilities(host):
     assert "training_package" not in advertised and "runtime" not in advertised
 
 
-def test_control_setup_uses_dedicated_python_preserves_token_and_checks_health(tmp_path):
-    repo = tmp_path / "repo with spaces"
+@pytest.mark.parametrize("load_state", ["loaded", "bad-setting"])
+def test_control_setup_loads_unit_before_enabling_or_restarting(tmp_path, load_state):
+    repo = tmp_path / "repo with spaces and %h"
     (repo / ".runtime").mkdir(parents=True)
     (repo / ".runtime/control-token").write_text("existing-token")
     request = {"state": str(tmp_path / "environment.json"), "storage": {}}
     calls = []
     def run(args, **kwargs):
-        calls.append([str(arg) for arg in args])
-        return subprocess.CompletedProcess(args, 0, "", "")
+        args = [str(arg) for arg in args]
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, load_state if args[:3] == ["systemctl", "--user", "show"] else "", "")
     with patch.object(install, "run", side_effect=run), patch.object(install.Path, "home", return_value=tmp_path), patch.object(install, "urlopen", return_value=io.BytesIO(b'{"service":"control-daemon"}')):
-        install.install_control(repo, request)
+        if load_state == "loaded":
+            install.install_control(repo, request)
+        else:
+            with pytest.raises(RuntimeError, match="LoadState=bad-setting"):
+                install.install_control(repo, request)
     assert (repo / ".runtime/control-token").read_text() == "existing-token"
     assert "CONTROL_DAEMON_PYTHON=" in (repo / ".runtime/control-install.env").read_text()
     unit = (tmp_path / ".config/systemd/user/eliza-control-daemon.service").read_text()
-    assert f'WorkingDirectory="{repo}"' in unit
-    assert ["systemctl", "--user", "restart", "eliza-control-daemon.service"] in calls
+    escaped = str(repo).replace("%", "%%")
+    assert f"WorkingDirectory={escaped}" in unit.splitlines()
+    assert f'ExecStart="{escaped}/services/control-daemon/start.sh"' in unit.splitlines()
+    unit_operations = [call[2] for call in calls if call[:2] == ["systemctl", "--user"]]
+    expected = ["daemon-reload", "show"]
+    if load_state == "loaded":
+        expected += ["enable", "restart"]
+    assert unit_operations == expected
     assert not any("torch" in " ".join(call) for call in calls)

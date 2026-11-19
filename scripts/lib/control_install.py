@@ -453,8 +453,9 @@ def install_control(repo: Path, request: dict):
                 "ELIZA_SLURM_USER": "eliza-slurm", "ELIZA_SLURM_TOKEN_LIFESPAN": "3600"}
     atomic(runtime / "control-install.env", "".join(f"{key}={shlex.quote(value)}\n" for key, value in settings.items()).encode(), 0o600)
     unit = Path.home() / ".config/systemd/user/eliza-control-daemon.service"
-    working = json.dumps(str(repo).replace("%", "%%"))
-    start = json.dumps(str(repo / "services/control-daemon/start.sh").replace("%", "%%"))
+    # WorkingDirectory is a literal path; only ExecStart uses argument quoting.
+    working = str(repo).replace("%", "%%")
+    start = json.dumps(str(repo / "services/control-daemon/start.sh").replace("%", "%%"), ensure_ascii=False)
     text = f"[Unit]\nDescription=Eliza host control daemon\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory={working}\nExecStart={start}\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n"
     if unit.exists() and not ("Eliza Inference REST Control Daemon" in unit.read_text() or "Eliza host control daemon" in unit.read_text()):
         raise RuntimeError("Preserving an unrecognized existing control systemd unit: " + str(unit))
@@ -462,8 +463,13 @@ def install_control(repo: Path, request: dict):
         atomic(unit.with_suffix(".service.pre-install"), unit.read_bytes())
     atomic(unit, text.encode())
     run(["systemctl", "--user", "daemon-reload"])
-    run(["systemctl", "--user", "enable", "eliza-control-daemon.service"])
-    run(["systemctl", "--user", "restart", "eliza-control-daemon.service"])
+    service = ["systemctl", "--user"]
+    name = unit.name
+    load_state = run([*service, "show", "--property=LoadState", "--value", name]).stdout.strip()
+    if load_state != "loaded":
+        raise RuntimeError(f"systemd did not load {unit} (LoadState={load_state}); inspect: systemctl --user status {name}")
+    run([*service, "enable", name])
+    run([*service, "restart", name])
     host = os.environ.get("HOST", "127.0.0.1")
     host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     deadline = time.monotonic() + 30
