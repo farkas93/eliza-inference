@@ -200,14 +200,14 @@ class Provisioner:
         run(["chown", owner, path])
         path.chmod(mode)
 
-    def secret(self, path, owner, size=32):
+    def secret(self, path, owner, size=32, *, mode=0o640):
         path = self.p(path)
         if path.is_symlink():
             raise RuntimeError("Preserving symlinked credential: " + str(path))
         if not path.exists():
-            atomic(path, secrets.token_bytes(size), 0o640)
+            atomic(path, secrets.token_bytes(size), mode)
         run(["chown", owner, path])
-        path.chmod(0o640)
+        path.chmod(mode)
 
     def slurm(self):
         complete = self.prefix / ".eliza-complete"
@@ -277,7 +277,8 @@ class Provisioner:
                                   ("/var/lib/slurm/jobs/logs", "eliza-slurm:eliza-slurm", 0o750)):
             self.directory(path, owner, mode)
         self.secret("/etc/slurm/jwt_hs256.key", "root:slurm")
-        self.secret("/etc/munge/munge.key", "munge:munge", size=1024)
+        # Unlike the Slurm JWT key, munged rejects group-readable key files.
+        self.secret("/etc/munge/munge.key", "munge:munge", size=1024, mode=0o600)
         node = platform.node().split(".")[0]
         if not re.fullmatch(r"[A-Za-z0-9_-]+", node):
             raise RuntimeError("Unsupported node hostname")
@@ -345,7 +346,10 @@ PartitionName=training Nodes={node} Default=YES State=INACTIVE OverSubscribe=EXC
         temporary = not self.active(unit)
         try:
             if temporary:
-                run(["systemctl", "start", unit])
+                try:
+                    run(["systemctl", "start", unit])
+                except RuntimeError as exc:
+                    raise RuntimeError(f"{exc}\nFor MUNGE startup details, run: sudo journalctl -u munge.service -b -n 40 --no-pager") from exc
             deadline = time.monotonic() + 10
             while True:
                 try:

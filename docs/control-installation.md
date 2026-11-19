@@ -114,5 +114,10 @@ Useful diagnostics:
 
 ```bash
 systemctl --user status eliza-control-daemon.service
+sudo journalctl -u munge.service -b -n 40 --no-pager
 sudo journalctl -u slurmctld.service -u slurmd.service -u slurmrestd.service
 ```
+
+If MUNGE rejects a group-readable key from an earlier installation, rerun
+`./scripts/setup control` before `--check`. Setup corrects the key's ownership
+and permissions (`munge:munge`, `0600`) without replacing the key.

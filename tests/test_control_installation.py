@@ -167,6 +167,10 @@ def test_completed_slurm_build_is_reused_but_plugins_are_verified(host):
 
 def test_install_checks_api_gpu_with_temporary_munge_and_no_scheduler(host):
     prepare_binaries(host)
+    munge_key = host.p("/etc/munge/munge.key")
+    munge_key.parent.mkdir()
+    munge_key.write_bytes(b"existing-key")
+    munge_key.chmod(0o640)
     run, calls = simulator(host)
     with patch.object(install, "run", side_effect=run), patch.object(host, "packages"), patch.object(host, "account"):
         host.apply()
@@ -175,6 +179,9 @@ def test_install_checks_api_gpu_with_temporary_munge_and_no_scheduler(host):
     conf = host.p("/etc/slurm/slurm.conf").read_text()
     assert "State=INACTIVE" in conf and "RealMemory=115200" in conf
     assert "AllowGroups=eliza-slurm" in conf
+    assert munge_key.read_bytes() == b"existing-key"
+    assert munge_key.stat().st_mode & 0o777 == 0o600
+    assert ["chown", "munge:munge", str(munge_key)] in calls
     assert any(call[-1] == "--generate-openapi-spec" for call in calls)
     assert [call for call in calls if call[:2] == ["systemctl", "start"]] == [["systemctl", "start", "munge.service"]]
     assert calls.index(["munge", "-n"]) < calls.index([str(host.prefix / "sbin/slurmd"), "-G"])
@@ -200,6 +207,14 @@ def test_check_stops_temporary_munge_on_gpu_probe_failure(host):
     with patch.object(install, "run", side_effect=run), pytest.raises(RuntimeError, match="simulated failure"):
         host.check()
     assert calls[-1] == ["systemctl", "stop", "munge.service"]
+
+
+def test_munge_start_failure_points_to_journal_without_probing_gpu(host):
+    prepare_binaries(host)
+    run, calls = simulator(host, fail_on="systemctl start munge.service")
+    with patch.object(install, "run", side_effect=run), pytest.raises(RuntimeError, match="journalctl -u munge.service"):
+        host.check()
+    assert not any(call[-1] == "-G" for call in calls)
 
 
 def test_check_stops_temporary_munge_on_readiness_timeout(host):
